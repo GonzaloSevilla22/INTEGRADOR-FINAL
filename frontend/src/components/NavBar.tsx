@@ -1,10 +1,15 @@
-import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useUIStore } from "../stores/uiStore";
+import { useCartStore } from "../stores/cartStore";
 
 export function NavBar(): JSX.Element {
   const { logout, isAdmin, isClient, isStock, isPedidos, user } = useAuth();
-  const [open, setOpen] = useState(false);
+  // UI local en el uiStore; cantidad del carrito por slice del cartStore (§12).
+  const open = useUIStore((s) => s.navMenuOpen);
+  const toggleNavMenu = useUIStore((s) => s.toggleNavMenu);
+  const cartCount = useCartStore((s) => s.itemCount());
+  const showCarrito = !isAdmin && !isPedidos && !isStock;
 
   return (
     <header className="border-b border-orange-100 bg-white/90 shadow-sm backdrop-blur">
@@ -13,7 +18,7 @@ export function NavBar(): JSX.Element {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setOpen(!open)}
+              onClick={toggleNavMenu}
               className="rounded border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-900 hover:bg-orange-100"
             >
               ☰ Menú
@@ -63,7 +68,7 @@ export function NavBar(): JSX.Element {
               🛍️ Productos
             </NavLink>
 
-            {!isAdmin && !isPedidos && !isStock && (
+            {showCarrito && (
               <NavLink
                 to="/carrito"
                 className={({ isActive }) =>
@@ -71,6 +76,11 @@ export function NavBar(): JSX.Element {
                 }
               >
                 🛒 Carrito
+                {cartCount > 0 && (
+                  <span className="ml-1 rounded-full bg-orange-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+                    {cartCount}
+                  </span>
+                )}
               </NavLink>
             )}
 

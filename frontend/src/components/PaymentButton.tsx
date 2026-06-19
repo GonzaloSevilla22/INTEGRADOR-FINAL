@@ -1,21 +1,23 @@
-import { useState } from 'react'
 import { api } from '../services/api'
+import { usePaymentStore } from '../stores/paymentStore'
 
 interface PaymentButtonProps {
   pedidoId: number
   monto: number
-  onPaymentInitiated?: () => void
 }
 
-export function PaymentButton({ pedidoId, monto, onPaymentInitiated }: PaymentButtonProps) {
-  const [loading, setLoading] = useState(false)
-  const [opened, setOpened] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function PaymentButton({ pedidoId, monto }: PaymentButtonProps) {
+  const status = usePaymentStore((s) => s.status)
+  const error = usePaymentStore((s) => s.error)
+  const startCheckout = usePaymentStore((s) => s.startCheckout)
+  const preferenceCreated = usePaymentStore((s) => s.preferenceCreated)
+  const fail = usePaymentStore((s) => s.fail)
+
+  const loading = status === 'creating'
+  const opened = status === 'initiated'
 
   const handlePagar = async () => {
-    setLoading(true)
-    setError(null)
-
+    startCheckout(pedidoId)
     try {
       const res = await api.post('/pagos/create-preference', {
         pedido_id: pedidoId,
@@ -23,16 +25,13 @@ export function PaymentButton({ pedidoId, monto, onPaymentInitiated }: PaymentBu
       const { init_point } = res.data
       if (init_point) {
         window.open(init_point, '_blank')
-        setOpened(true)
-        onPaymentInitiated?.()
+        preferenceCreated(init_point)
       } else {
-        setError('No se pudo obtener el link de pago')
+        fail('No se pudo obtener el link de pago')
       }
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'Error al iniciar el pago'
-      setError(detail)
-    } finally {
-      setLoading(false)
+      fail(detail)
     }
   }
 

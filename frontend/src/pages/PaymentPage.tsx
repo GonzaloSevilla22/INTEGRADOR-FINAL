@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, listDireccionesUsuario, updatePedidoDireccion, type DireccionEntregaPublic } from '../services/api'
 import { PaymentButton } from '../components/PaymentButton'
+import { usePaymentStore } from '../stores/paymentStore'
 
 interface OrderData {
   id: number
@@ -20,9 +21,21 @@ export default function PaymentPage() {
   const [selectedDirId, setSelectedDirId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [cashLoading, setCashLoading] = useState(false)
   const [updatingDir, setUpdatingDir] = useState(false)
-  const [paymentInitiated, setPaymentInitiated] = useState(false)
+
+  // Proceso de pago centralizado en el paymentStore (consigna §12).
+  const paymentStatus = usePaymentStore((s) => s.status)
+  const resetPayment = usePaymentStore((s) => s.reset)
+  const startCash = usePaymentStore((s) => s.startCash)
+  const failPayment = usePaymentStore((s) => s.fail)
+  const paymentInitiated = paymentStatus === 'initiated'
+  const cashLoading = paymentStatus === 'confirming_cash'
+
+  // Cada pedido arranca su proceso de pago desde cero.
+  useEffect(() => {
+    resetPayment()
+    return () => resetPayment()
+  }, [orderId, resetPayment])
 
   useEffect(() => {
     if (!user || !orderId) return
@@ -59,15 +72,15 @@ export default function PaymentPage() {
   }
 
   const pagarEnEfectivo = async () => {
-    setCashLoading(true)
+    startCash()
     try {
       await api.patch(`/pedidos/${orderId}/confirmar`, { forma_pago_codigo: "EFECTIVO" })
+      resetPayment()
       navigate(`/mis-pedidos`)
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || "Error al confirmar pedido"
+      failPayment(msg)
       setError(msg)
-    } finally {
-      setCashLoading(false)
     }
   }
 
@@ -200,7 +213,7 @@ export default function PaymentPage() {
               </div>
             ) : (
               <>
-                <PaymentButton pedidoId={order.id} monto={Number(order.total)} onPaymentInitiated={() => setPaymentInitiated(true)} />
+                <PaymentButton pedidoId={order.id} monto={Number(order.total)} />
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">

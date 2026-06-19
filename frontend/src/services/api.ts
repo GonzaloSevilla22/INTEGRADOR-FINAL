@@ -2,9 +2,9 @@ import axios, { AxiosError, type AxiosRequestConfig } from "axios";
 import type { Categoria, CategoriaCreate, CategoriaDetail, CategoriaUpdate } from "../models/Categoria";
 import type { Ingrediente, IngredienteCreate, IngredienteDetail, IngredienteUpdate, UnidadMedida } from "../models/Ingrediente";
 import type { Producto, ProductoCreate, ProductoUpdate } from "../models/Producto";
+import { useAuthStore } from "../stores/authStore";
 
 const API_BASE_URLS = ["/api/v1"];
-const TOKEN_KEY = "food_store_token";
 
 let _logoutHandler: (() => void) | null = null;
 
@@ -22,7 +22,8 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY);
+  // Acceso al token fuera de React vía el store Zustand (consigna §12).
+  const token = useAuthStore.getState().token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -33,7 +34,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
+      useAuthStore.getState().logout();
       if (_logoutHandler) {
         _logoutHandler();
       }
@@ -219,8 +220,8 @@ async function request<T>(
           params: options.params,
           headers: {
             ...(options.headers ?? {}),
-            Authorization: localStorage.getItem(TOKEN_KEY)
-              ? `Bearer ${localStorage.getItem(TOKEN_KEY)}`
+            Authorization: useAuthStore.getState().token
+              ? `Bearer ${useAuthStore.getState().token}`
               : undefined,
           },
           withCredentials: true,

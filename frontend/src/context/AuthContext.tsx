@@ -1,18 +1,9 @@
-import { createContext, useContext, useMemo, useState, useEffect, useCallback } from "react";
-import { loginRequest, api } from "../services/api";
+import { useEffect } from "react";
+import { useAuthStore, hasAnyRole, type User } from "../stores/authStore";
 
-const TOKEN_KEY = "food_store_token";
+export type { User };
 
-export interface User {
-  id: number;
-  nombre: string;
-  apellido: string;
-  email: string;
-  celular?: string;
-  activo: boolean;
-}
-
-interface AuthContextValue {
+export interface AuthContextValue {
   token: string | null;
   user: User | null;
   roles: string[];
@@ -28,118 +19,50 @@ interface AuthContextValue {
   verifySession: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+/**
+ * Bootstrap de sesión. Zustand no necesita Provider para el estado, pero
+ * mantenemos `AuthProvider` como host del efecto de arranque: valida la sesión
+ * persistida (token) una sola vez al montar. La forma del árbol en main.tsx no
+ * cambia.
+ */
+export function AuthProvider({ children }: { children: React.ReactNode }): JSX.Element {
+  const verifySession = useAuthStore((s) => s.verifySession);
 
-interface AuthProviderProps {
-  children: React.ReactNode;
-}
-
-function normalizeRole(role: string): string {
-  return (role || "").trim().toUpperCase();
-}
-
-function hasAnyRole(roles: string[], target: string): boolean {
-  const normalized = normalizeRole(target);
-  if (normalized === "CLIENT") {
-    return roles.some((r) => ["CLIENT", "CLIENTE"].includes(normalizeRole(r)));
-  }
-  return roles.some((r) => normalizeRole(r) === normalized);
-}
-
-export function AuthProvider({ children }: AuthProviderProps): JSX.Element {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState<User | null>(null);
-  const [roles, setRoles] = useState<string[]>([]);
-  const [authLoading, setAuthLoading] = useState(() => Boolean(localStorage.getItem(TOKEN_KEY)));
-
-  const verifySession = useCallback(async () => {
-    try {
-      const me = await api.get("/auth/me");
-      const data = me.data;
-      const normalizedRoles = (data.roles || []).map((r: string) => normalizeRole(r));
-      setUser({
-        id: data.id,
-        nombre: data.nombre,
-        apellido: data.apellido,
-        email: data.email,
-        celular: data.celular,
-        activo: data.activo,
-      });
-      setRoles(normalizedRoles);
-    } catch {
-      setUser(null);
-      setRoles([]);
-      setToken(null);
-      localStorage.removeItem(TOKEN_KEY);
-    } finally {
-      setAuthLoading(false);
-    }
-  }, []);
-
-  // On mount, verify session using httpOnly cookie (sent automatically with withCredentials)
   useEffect(() => {
-    if (token) {
-      verifySession();
-    } else {
-      setAuthLoading(false);
-    }
-  }, []); // only on mount
+    void verifySession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar
 
-  const login = async (email: string, password: string): Promise<void> => {
-    if (!email.trim() || !password.trim()) {
-      throw new Error("Email y clave son obligatorios.");
-    }
-    try {
-      const response = await loginRequest({ email, password });
-      const normalizedRoles = (response.roles || []).map((r) => normalizeRole(r));
-
-      localStorage.setItem(TOKEN_KEY, response.access_token);
-      setToken(response.access_token);
-      setUser(response.usuario);
-      setRoles(normalizedRoles);
-    } catch (error) {
-      throw error;
-    }
-  };
-
-  const logout = (): void => {
-    localStorage.removeItem(TOKEN_KEY);
-    setToken(null);
-    setUser(null);
-    setRoles([]);
-  };
-
-  const isAdmin = hasAnyRole(roles, "ADMIN");
-  const isClient = hasAnyRole(roles, "CLIENT");
-  const isStock = hasAnyRole(roles, "STOCK");
-  const isPedidos = hasAnyRole(roles, "PEDIDOS");
-
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      token,
-      user,
-      roles,
-      isAuthenticated: Boolean(token) && Boolean(user),
-      authLoading,
-      isAdmin,
-      isClient,
-      isStock,
-      isPedidos,
-      hasRole: (role: string) => hasAnyRole(roles, role),
-      login,
-      logout,
-      verifySession,
-    }),
-    [token, user, roles, authLoading, isAdmin, isClient, isStock, isPedidos]
-  );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <>{children}</>;
 }
 
+/**
+ * Hook adapter sobre `useAuthStore` (consigna §12 — suscripción por slice).
+ * Conserva la interfaz del antiguo AuthContext para que los componentes
+ * consumidores no cambien; por debajo todo el estado vive en el store Zustand.
+ */
 export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth debe usarse dentro de AuthProvider");
-  }
-  return context;
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const roles = useAuthStore((s) => s.roles);
+  const authLoading = useAuthStore((s) => s.authLoading);
+  const login = useAuthStore((s) => s.login);
+  const logout = useAuthStore((s) => s.logout);
+  const verifySession = useAuthStore((s) => s.verifySession);
+
+  return {
+    token,
+    user,
+    roles,
+    isAuthenticated: Boolean(token) && Boolean(user),
+    authLoading,
+    isAdmin: hasAnyRole(roles, "ADMIN"),
+    isClient: hasAnyRole(roles, "CLIENT"),
+    isStock: hasAnyRole(roles, "STOCK"),
+    isPedidos: hasAnyRole(roles, "PEDIDOS"),
+    hasRole: (role: string) => hasAnyRole(roles, role),
+    login,
+    logout,
+    verifySession,
+  };
 }
