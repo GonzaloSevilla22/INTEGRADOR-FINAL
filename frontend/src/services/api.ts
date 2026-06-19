@@ -482,6 +482,44 @@ export function getCategoriaDetail(categoriaId: number): Promise<CategoriaDetail
 }
 
 // ============================================================================
+// UPLOADS (Cloudinary)
+// ============================================================================
+
+export interface UploadImagenResponse {
+  secure_url: string;
+  public_id: string;
+  width?: number;
+  height?: number;
+  format?: string;
+}
+
+/** Sube una imagen al backend (módulo /uploads → Cloudinary). Requiere ADMIN. */
+export async function uploadImagen(file: File): Promise<UploadImagenResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  // Content-Type undefined: que axios fije el multipart/form-data con boundary.
+  const response = await api.post<UploadImagenResponse>("/uploads/imagen", formData, {
+    headers: { "Content-Type": undefined as unknown as string },
+  });
+  return response.data;
+}
+
+/** Elimina una imagen de Cloudinary por su public_id (puede contener '/'). */
+export function deleteImagen(publicId: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/uploads/imagen/${publicId}`, { method: "DELETE" });
+}
+
+/**
+ * Inserta transformaciones de Cloudinary (f_auto, q_auto, c_fill) en una
+ * secure_url. Si no es una URL de Cloudinary, la devuelve sin cambios.
+ */
+export function cloudinaryThumb(url: string | null | undefined, w = 400, h = 400): string {
+  if (!url) return "";
+  if (!url.includes("res.cloudinary.com") || !url.includes("/upload/")) return url;
+  return url.replace("/upload/", `/upload/f_auto,q_auto,c_fill,w_${w},h_${h}/`);
+}
+
+// ============================================================================
 // STOCK OPERATIONS
 // ============================================================================
 

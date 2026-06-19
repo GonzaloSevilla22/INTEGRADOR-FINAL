@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import type { Categoria } from "../models/Categoria";
 import type { Producto } from "../models/Producto";
-import { categoriaService, getProductosPublic, getProductoPublic, getProductosWebSocketUrl } from "../services/api";
+import { categoriaService, cloudinaryThumb, getProductosPublic, getProductoPublic, getProductosWebSocketUrl } from "../services/api";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("es-AR", {
@@ -16,7 +16,8 @@ function formatCurrency(value: number): string {
 
 function getImageUrl(producto: Producto): string {
   if (producto.imagenes_url && producto.imagenes_url.length > 0 && producto.imagenes_url[0]) {
-    return producto.imagenes_url[0];
+    // Transformaciones Cloudinary (f_auto, q_auto, c_fill) — no-op si no es Cloudinary.
+    return cloudinaryThumb(producto.imagenes_url[0], 600, 400);
   }
 
   return "https://images.unsplash.com/photo-1543332164-6e82f355badc?auto=format&fit=crop&w=800&q=80";

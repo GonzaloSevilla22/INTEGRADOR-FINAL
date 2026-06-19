@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useMemo, useState, useEffect, type ChangeEvent, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "../components/Modal";
@@ -7,15 +7,17 @@ import type { Ingrediente, IngredienteCreate, IngredienteUpdate, UnidadMedida } 
 import type { Producto, ProductoCreate, ProductoIngrediente, ProductoUpdate } from "../models/Producto";
 import {
   categoriaService,
+  cloudinaryThumb,
   getUnidadesMedida,
   ingredienteService,
   productoService,
+  uploadImagen,
   type CrudService,
 } from "../services/api";
 
 const PAGE_SIZE = 10;
 
-type EntityFormValue = string | number | boolean | ProductoIngrediente[] | null;
+type EntityFormValue = string | number | boolean | string[] | ProductoIngrediente[] | null;
 
 interface EntityForm {
   nombre: string;
@@ -107,6 +109,36 @@ function ProductoFormExtra({
     }
     return costo > 0 ? costo * 1.5 : null;
   }, [form, ingredientesDisponibles, usaCostoCompraManual, usaStockManual]);
+
+  const imagenes = (form.imagenes_url as string[] | undefined) ?? [];
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [imagenError, setImagenError] = useState<string | null>(null);
+
+  const handleSubirImagen = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setSubiendoImagen(true);
+    setImagenError(null);
+    try {
+      const res = await uploadImagen(file);
+      setForm((previous) => ({
+        ...previous,
+        imagenes_url: [...((previous.imagenes_url as string[] | undefined) ?? []), res.secure_url],
+      }));
+    } catch (error) {
+      setImagenError(error instanceof Error ? error.message : "Error al subir la imagen");
+    } finally {
+      setSubiendoImagen(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleQuitarImagen = (url: string): void => {
+    setForm((previous) => ({
+      ...previous,
+      imagenes_url: ((previous.imagenes_url as string[] | undefined) ?? []).filter((u) => u !== url),
+    }));
+  };
 
   return (
     <>
@@ -206,6 +238,40 @@ function ProductoFormExtra({
           placeholder="Ej: 60"
         />
       )}
+
+      <label className="text-sm font-medium text-orange-900">Imágenes</label>
+      <div className="space-y-2">
+        {imagenes.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {imagenes.map((url) => (
+              <div key={url} className="relative">
+                <img
+                  src={cloudinaryThumb(url, 96, 96)}
+                  alt="Imagen del producto"
+                  className="h-16 w-16 rounded border border-orange-200 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleQuitarImagen(url)}
+                  aria-label="Quitar imagen"
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white shadow hover:bg-red-600"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleSubirImagen}
+          disabled={subiendoImagen}
+          className="block w-full text-sm text-slate-600 file:mr-3 file:rounded file:border-0 file:bg-orange-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-orange-900 hover:file:bg-orange-200 disabled:opacity-50"
+        />
+        {subiendoImagen && <p className="text-xs text-orange-600">Subiendo imagen…</p>}
+        {imagenError && <p className="text-xs text-red-600">{imagenError}</p>}
+      </div>
 
       <ProductoIngredientsEditor form={form} setForm={setForm} />
     </>
@@ -1103,12 +1169,15 @@ const productoConfig: EntityConfig<Producto, ProductoCreate, ProductoUpdate> = {
     categoria_id: item?.categoria_id ?? null,
     stock_manual: item?.stock_manual ?? null,
     costo_compra_manual: item?.costo_compra_manual ?? null,
+    imagenes_url: item?.imagenes_url ?? [],
   }),
   toCreate: (form) => ({
     nombre: form.nombre,
     descripcion: form.descripcion || null,
     precio_base: form.numberValue,
-    imagenes_url: null,
+    imagenes_url: ((form.imagenes_url as string[] | undefined) ?? []).length > 0
+      ? (form.imagenes_url as string[])
+      : null,
     tiempo_prep_min: null,
     disponible: form.secondFlag,
     usa_stock_manual: Boolean(form.usa_stock_manual),
@@ -1121,6 +1190,9 @@ const productoConfig: EntityConfig<Producto, ProductoCreate, ProductoUpdate> = {
     nombre: form.nombre,
     descripcion: form.descripcion || null,
     precio_base: form.numberValue,
+    imagenes_url: ((form.imagenes_url as string[] | undefined) ?? []).length > 0
+      ? (form.imagenes_url as string[])
+      : null,
     disponible: form.secondFlag,
     usa_stock_manual: Boolean(form.usa_stock_manual),
     stock_manual: (form.stock_manual as number | null) ?? null,
