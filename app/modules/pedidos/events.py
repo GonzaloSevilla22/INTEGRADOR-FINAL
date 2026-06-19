@@ -7,6 +7,7 @@ from typing import Any, Optional
 EVENT_ESTADO_CAMBIADO = "estado_cambiado"
 EVENT_PEDIDO_CANCELADO = "pedido_cancelado"
 EVENT_PAGO_CONFIRMADO = "pago_confirmado"
+EVENT_PAGO_RECHAZADO = "pago_rechazado"
 
 
 def _iso_z(dt: datetime) -> str:

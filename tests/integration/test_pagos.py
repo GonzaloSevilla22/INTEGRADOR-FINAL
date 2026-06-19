@@ -186,3 +186,147 @@ class TestPagosFlow:
         assert response.status_code == 200
         data = response.json()
         assert data["pedido_id"] == pedido_id
+
+
+class TestPagosWebSocketCE09:
+    """CE-09: el pago notifica vía WS (consigna §9.4, §289, §655).
+
+    El pago aprobado emite 'pago_confirmado' (pedido → CONFIRMADO) y el
+    rechazado emite 'pago_rechazado' (el pedido NO avanza). La emisión es
+    post-commit, vía manager.broadcast_pedido, y no se duplica en reintentos.
+    """
+
+    def _crear_pago_pendiente(self, client, admin_auth_headers, cliente_auth_headers) -> int:
+        pedido_id = _create_pedido(client, admin_auth_headers, cliente_auth_headers)
+        from app.modules.payments.service import PaymentService
+        with patch.object(PaymentService, "_crear_preferencia_mp", new=AsyncMock(return_value={
+            "preference_id": "pref_ws",
+            "init_point": "https://mp.com/ws",
+        })):
+            with patch.object(PaymentService, "_get_mp_access_token", return_value="test_token"):
+                client.post(
+                    "/api/v1/pagos/create-preference",
+                    headers=cliente_auth_headers,
+                    json={"pedido_id": pedido_id},
+                )
+        return pedido_id
+
+    def test_webhook_approved_broadcasts_pago_confirmado(
+        self, client: TestClient, admin_auth_headers: dict, cliente_auth_headers: dict
+    ):
+        pedido_id = self._crear_pago_pendiente(client, admin_auth_headers, cliente_auth_headers)
+        from app.modules.payments.service import PaymentService
+        fake_manager = AsyncMock()
+        with patch.object(PaymentService, "_consultar_pago_mp", new=AsyncMock(return_value={
+            "mp_payment_id": 5000,
+            "mp_status": "approved",
+            "mp_status_detail": "accredited",
+            "mp_merchant_order_id": 9000,
+            "external_reference": str(pedido_id),
+        })):
+            with patch.object(PaymentService, "_get_mp_access_token", return_value="test_token"):
+                with patch("app.modules.payments.service.manager", fake_manager):
+                    resp = client.post(
+                        "/api/v1/pagos/webhook",
+                        json={"type": "payment", "data": {"id": "5000"}},
+                    )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "processed"
+
+        fake_manager.broadcast_pedido.assert_awaited_once()
+        args, _ = fake_manager.broadcast_pedido.call_args
+        broadcast_pedido_id, evento = args
+        assert broadcast_pedido_id == pedido_id
+        assert set(evento.keys()) == {
+            "event", "pedido_id", "estado_anterior", "estado_nuevo",
+            "usuario_id", "motivo", "timestamp",
+        }
+        assert evento["event"] == "pago_confirmado"
+        assert evento["pedido_id"] == pedido_id
+        assert evento["estado_anterior"] == "PENDIENTE"
+        assert evento["estado_nuevo"] == "CONFIRMADO"
+        # El webhook lo dispara "el sistema" (§9.4): usuario_id null.
+        assert evento["usuario_id"] is None
+
+    def test_webhook_rejected_broadcasts_pago_rechazado(
+        self, client: TestClient, admin_auth_headers: dict, cliente_auth_headers: dict
+    ):
+        pedido_id = self._crear_pago_pendiente(client, admin_auth_headers, cliente_auth_headers)
+        from app.modules.payments.service import PaymentService
+        fake_manager = AsyncMock()
+        with patch.object(PaymentService, "_consultar_pago_mp", new=AsyncMock(return_value={
+            "mp_payment_id": 5001,
+            "mp_status": "rejected",
+            "mp_status_detail": "cc_rejected_other_reason",
+            "mp_merchant_order_id": 9001,
+            "external_reference": str(pedido_id),
+        })):
+            with patch.object(PaymentService, "_get_mp_access_token", return_value="test_token"):
+                with patch("app.modules.payments.service.manager", fake_manager):
+                    resp = client.post(
+                        "/api/v1/pagos/webhook",
+                        json={"type": "payment", "data": {"id": "5001"}},
+                    )
+        assert resp.status_code == 200
+
+        fake_manager.broadcast_pedido.assert_awaited_once()
+        args, _ = fake_manager.broadcast_pedido.call_args
+        broadcast_pedido_id, evento = args
+        assert broadcast_pedido_id == pedido_id
+        assert evento["event"] == "pago_rechazado"
+        assert evento["pedido_id"] == pedido_id
+        # Un pago rechazado NO avanza el pedido: sigue PENDIENTE.
+        assert evento["estado_nuevo"] == "PENDIENTE"
+
+    def test_webhook_already_approved_does_not_rebroadcast(
+        self, client: TestClient, admin_auth_headers: dict, cliente_auth_headers: dict
+    ):
+        pedido_id = self._crear_pago_pendiente(client, admin_auth_headers, cliente_auth_headers)
+        from app.modules.payments.service import PaymentService
+        approved = AsyncMock(return_value={
+            "mp_payment_id": 5002,
+            "mp_status": "approved",
+            "mp_status_detail": "accredited",
+            "mp_merchant_order_id": 9002,
+            "external_reference": str(pedido_id),
+        })
+        with patch.object(PaymentService, "_consultar_pago_mp", new=approved):
+            with patch.object(PaymentService, "_get_mp_access_token", return_value="test_token"):
+                # 1er webhook: procesa y emite (manager real, no-op sin conexiones).
+                client.post("/api/v1/pagos/webhook", json={"type": "payment", "data": {"id": "5002"}})
+                # 2do webhook: ya aprobado → no debe re-emitir (sin doble notificación).
+                fake_manager = AsyncMock()
+                with patch("app.modules.payments.service.manager", fake_manager):
+                    resp = client.post("/api/v1/pagos/webhook", json={"type": "payment", "data": {"id": "5002"}})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "already_processed"
+        fake_manager.broadcast_pedido.assert_not_awaited()
+
+    def test_confirm_payment_approved_broadcasts(
+        self, client: TestClient, admin_auth_headers: dict, cliente_auth_headers: dict
+    ):
+        """Triangulación: el endpoint confirm/verify también notifica al aprobar."""
+        pedido_id = self._crear_pago_pendiente(client, admin_auth_headers, cliente_auth_headers)
+        from app.modules.payments.service import PaymentService
+        fake_manager = AsyncMock()
+        with patch.object(PaymentService, "_consultar_pago_mp", new=AsyncMock(return_value={
+            "mp_payment_id": 7000,
+            "mp_status": "approved",
+            "mp_status_detail": "accredited",
+            "mp_merchant_order_id": 9100,
+            "external_reference": str(pedido_id),
+        })):
+            with patch.object(PaymentService, "_get_mp_access_token", return_value="test_token"):
+                with patch("app.modules.payments.service.manager", fake_manager):
+                    resp = client.post(
+                        "/api/v1/pagos/confirm",
+                        headers=cliente_auth_headers,
+                        json={"pedido_id": pedido_id, "payment_id": 7000},
+                    )
+        assert resp.status_code == 200
+        fake_manager.broadcast_pedido.assert_awaited_once()
+        args, _ = fake_manager.broadcast_pedido.call_args
+        broadcast_pedido_id, evento = args
+        assert broadcast_pedido_id == pedido_id
+        assert evento["event"] == "pago_confirmado"
+        assert evento["estado_nuevo"] == "CONFIRMADO"

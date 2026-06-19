@@ -11,8 +11,14 @@ from sqlmodel import Session
 from app.core.config import settings
 from app.core.rbac import STATE_CONFIRMADO, normalize_role, ROLE_ADMIN, ROLE_PEDIDOS
 from app.core.stock_utils import descontar_stock_pedido
+from app.core.websocket import manager
 from app.modules.payments.models import Pago
 from app.modules.pedidos.models import Pedido
+from app.modules.pedidos.events import (
+    EVENT_PAGO_CONFIRMADO,
+    EVENT_PAGO_RECHAZADO,
+    build_pedido_event,
+)
 from app.modules.payments.schemas import (
     PagoCrearResponse,
     PagoEstadoResponse,
@@ -50,6 +56,34 @@ class PaymentService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para gestionar este pago",
             )
+
+    async def _broadcast_pago(
+        self,
+        *,
+        event: str,
+        pedido_id: int,
+        estado_anterior: Optional[str],
+        estado_nuevo: Optional[str],
+        usuario_id: Optional[int] = None,
+        motivo: Optional[str] = None,
+    ) -> None:
+        """Emite el evento §9.4 del pago al canal del pedido y admin (post-commit, CE-09).
+
+        Defensivo: una falla de WebSocket nunca debe romper el procesamiento del
+        pago (el broadcast va fuera de la transacción, igual que en pedidos).
+        """
+        try:
+            evento = build_pedido_event(
+                event=event,
+                pedido_id=pedido_id,
+                estado_anterior=estado_anterior,
+                estado_nuevo=estado_nuevo,
+                usuario_id=usuario_id,
+                motivo=motivo,
+            )
+            await manager.broadcast_pedido(pedido_id, evento)
+        except Exception:
+            logger.exception("Error emitiendo evento WS de pago (pedido_id=%s)", pedido_id)
 
     async def _crear_preferencia_mp(
         self, monto: Decimal, titulo: str, pedido_id: int, back_urls: dict, frontend_url: str = ""
@@ -319,6 +353,12 @@ class PaymentService:
             pedido_id = int(external_reference) if external_reference else None
             logger.info("Webhook pedido_id desde external_reference: %s", pedido_id)
 
+            # Datos para la notificación WS post-commit (CE-09).
+            broadcast_event: Optional[str] = None
+            broadcast_estado_anterior: Optional[str] = None
+            broadcast_estado_nuevo: Optional[str] = None
+            broadcast_pedido_id: Optional[int] = None
+
             with PagoUnitOfWork(self._session) as uow:
                 if pedido_id:
                     pago = uow.pagos.get_ultimo_by_pedido(pedido_id)
@@ -344,9 +384,12 @@ class PaymentService:
                 pago.updated_at = datetime.now(timezone.utc)
                 uow.pagos.add(pago)
 
+                broadcast_pedido_id = pago.pedido_id
+                pedido = uow.pedidos.get_by_id(pago.pedido_id)
+
                 if nuevo_estado == "aprobado":
-                    pedido = uow.pedidos.get_by_id(pago.pedido_id)
                     if pedido:
+                        broadcast_estado_anterior = pedido.estado_codigo
                         pedido.estado_codigo = STATE_CONFIRMADO
                         pedido.forma_pago_codigo = "MERCADOPAGO"
                         pedido.updated_at = datetime.now(timezone.utc)
@@ -356,6 +399,25 @@ class PaymentService:
                             "Webhook: pedido %s actualizado a PAGADO, stock descontado",
                             pedido.id,
                         )
+                        broadcast_event = EVENT_PAGO_CONFIRMADO
+                        broadcast_estado_nuevo = STATE_CONFIRMADO
+                elif nuevo_estado == "rechazado":
+                    # El pago rechazado NO avanza el pedido: queda como está.
+                    estado_actual = pedido.estado_codigo if pedido else None
+                    broadcast_event = EVENT_PAGO_RECHAZADO
+                    broadcast_estado_anterior = estado_actual
+                    broadcast_estado_nuevo = estado_actual
+
+            # Notificación WS post-commit (fuera de la transacción, CE-09).
+            if broadcast_event and broadcast_pedido_id is not None:
+                await self._broadcast_pago(
+                    event=broadcast_event,
+                    pedido_id=broadcast_pedido_id,
+                    estado_anterior=broadcast_estado_anterior,
+                    estado_nuevo=broadcast_estado_nuevo,
+                    usuario_id=None,  # el webhook lo dispara "el sistema" (§9.4)
+                    motivo=mp_info.get("mp_status_detail"),
+                )
 
             logger.info(
                 "Webhook procesado: pago_id=%s pedido_id=%s estado=%s",
@@ -412,6 +474,10 @@ class PaymentService:
             else:
                 nuevo_estado = "pendiente"
 
+            broadcast_event: Optional[str] = None
+            broadcast_estado_anterior: Optional[str] = None
+            broadcast_estado_nuevo: Optional[str] = None
+
             with PagoUnitOfWork(self._session) as uow:
                 pago = uow.pagos.get_by_mp_payment_id(resolved_payment_id)
                 if not pago:
@@ -427,11 +493,29 @@ class PaymentService:
                     uow.pagos.add(pago)
 
                     if nuevo_estado == "aprobado" and pedido.estado_codigo == "PENDIENTE":
+                        broadcast_estado_anterior = pedido.estado_codigo
                         pedido.estado_codigo = STATE_CONFIRMADO
                         pedido.forma_pago_codigo = "MERCADOPAGO"
                         pedido.updated_at = datetime.now(timezone.utc)
                         uow.pedidos.add(pedido)
                         descontar_stock_pedido(self._session, pedido.id)
+                        broadcast_event = EVENT_PAGO_CONFIRMADO
+                        broadcast_estado_nuevo = STATE_CONFIRMADO
+                    elif nuevo_estado == "rechazado":
+                        broadcast_event = EVENT_PAGO_RECHAZADO
+                        broadcast_estado_anterior = pedido.estado_codigo
+                        broadcast_estado_nuevo = pedido.estado_codigo
+
+            # Notificación WS post-commit (CE-09).
+            if broadcast_event:
+                await self._broadcast_pago(
+                    event=broadcast_event,
+                    pedido_id=pedido_id,
+                    estado_anterior=broadcast_estado_anterior,
+                    estado_nuevo=broadcast_estado_nuevo,
+                    usuario_id=current_user.id if current_user else None,
+                    motivo=mp_info.get("mp_status_detail"),
+                )
 
             return PagoEstadoResponse(estado=nuevo_estado, pedido_id=pedido_id)
 
@@ -449,6 +533,10 @@ class PaymentService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Pedido no encontrado",
             )
+
+        broadcast_event: Optional[str] = None
+        broadcast_estado_anterior: Optional[str] = None
+        broadcast_estado_nuevo: Optional[str] = None
 
         with PagoUnitOfWork(self._session) as uow:
             pago = uow.pagos.get_ultimo_by_pedido(data.pedido_id)
@@ -491,9 +579,27 @@ class PaymentService:
                 uow.pagos.add(pago)
 
             if nuevo_estado == "aprobado":
+                broadcast_estado_anterior = pedido.estado_codigo
                 pedido.estado_codigo = STATE_CONFIRMADO
                 pedido.updated_at = datetime.now(timezone.utc)
                 uow.pedidos.add(pedido)
                 descontar_stock_pedido(self._session, pedido.id)
+                broadcast_event = EVENT_PAGO_CONFIRMADO
+                broadcast_estado_nuevo = STATE_CONFIRMADO
+            elif nuevo_estado == "rechazado":
+                broadcast_event = EVENT_PAGO_RECHAZADO
+                broadcast_estado_anterior = pedido.estado_codigo
+                broadcast_estado_nuevo = pedido.estado_codigo
+
+        # Notificación WS post-commit (CE-09).
+        if broadcast_event:
+            await self._broadcast_pago(
+                event=broadcast_event,
+                pedido_id=data.pedido_id,
+                estado_anterior=broadcast_estado_anterior,
+                estado_nuevo=broadcast_estado_nuevo,
+                usuario_id=None,
+                motivo=(mp_info.get("mp_status_detail") if data.mp_payment_id else "Aprobado manualmente"),
+            )
 
         return PagoEstadoResponse(estado=nuevo_estado, pedido_id=data.pedido_id)
