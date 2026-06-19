@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { RealtimeBadge } from "../components/RealtimeBadge";
+import { useAdminOrdersFeed } from "../hooks/useOrderStatusWS";
 import {
   cambiarEstadoPedido,
-  getPedidosWebSocketUrl,
   listPedidos,
   type PedidoPublic,
   type PedidosFilter,
@@ -69,9 +70,6 @@ export function OperacionesPedidosPage(): JSX.Element {
 
   useEffect(() => {
     cargarAllPedidos();
-    const ws = new WebSocket(getPedidosWebSocketUrl());
-    ws.onmessage = () => { cargarAllPedidos(); cargarTabla(); };
-    return () => ws.close();
   }, [cargarAllPedidos]);
 
   const stats = useMemo(() => {
@@ -126,6 +124,13 @@ export function OperacionesPedidosPage(): JSX.Element {
     cargarTabla();
   }, [cargarTabla]);
 
+  // Feed admin en tiempo real (consigna §9.2/§9.5): cada cambio de estado de
+  // cualquier pedido refresca stats y tabla. Reconexión exponencial en el hook.
+  useAdminOrdersFeed(() => {
+    cargarAllPedidos();
+    cargarTabla();
+  });
+
   const totalPages = Math.ceil(tablaTotal / pageSize);
 
   // ---- Actions ----
@@ -178,7 +183,10 @@ export function OperacionesPedidosPage(): JSX.Element {
   return (
     <section className="rounded-3xl border border-orange-100 bg-white/90 p-5 shadow-sm backdrop-blur">
       <div className="mb-5">
-        <h1 className="text-3xl font-semibold text-orange-950">Operaciones de Pedidos</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-3xl font-semibold text-orange-950">Operaciones de Pedidos</h1>
+          <RealtimeBadge channel="admin:pedidos" />
+        </div>
         <p className="mt-2 text-sm text-slate-600">
           {stats.total} pedidos &middot; {stats.pendientes} pendientes &middot; {stats.enPreparacion} en preparación &middot; {stats.entregados} entregados
         </p>

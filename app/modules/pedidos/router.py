@@ -9,9 +9,10 @@ from sqlmodel import Session
 from app.core.config import settings
 from app.core.deps import get_current_active_user, require_roles
 from app.core.database import get_session
-from app.core.rbac import ROLE_ADMIN, ROLE_CLIENT, ROLE_PEDIDOS
+from app.core.rbac import ROLE_ADMIN, ROLE_CLIENT, ROLE_PEDIDOS, normalize_role
 from app.core.security import decode_access_token
-from app.core.websocket import manager
+from app.core.websocket import ADMIN_CHANNEL, manager, pedido_channel, role_channel
+from app.modules.pedidos.pedido_repository import PedidoRepository
 from app.modules.pedidos.service import PedidoService
 from app.modules.pedidos.schemas import (
     CambiarDireccionPedidoInput,
@@ -267,39 +268,56 @@ def get_historial_pedido(
     return svc.get_historial(current_user.id, pedido_id, current_user.roles)
 
 
-@ws_router.websocket("/ws/pedidos")
-async def pedidos_websocket(
-    websocket: WebSocket,
-    token: str | None = Query(default=None),
-    session: Session = Depends(get_session),
-):
-    # Autenticación: query param ?token=<jwt> (consigna §9.1), o cookie, o header Authorization
+# ============================================================================
+# WEBSOCKET — Notificaciones en tiempo real (consigna §9.2)
+# ============================================================================
+
+def _resolve_ws_token(websocket: WebSocket, token: str | None) -> str | None:
+    """Resuelve el token: query param ?token= (consigna §9.1), cookie o header."""
     if not token:
         token = websocket.cookies.get(settings.COOKIE_NAME)
     if not token:
         auth_header = websocket.headers.get("Authorization")
         if auth_header and auth_header.lower().startswith("bearer "):
             token = auth_header.split(" ", 1)[1]
+    return token
 
+
+async def _reject_ws(websocket: WebSocket, reason: str, code: int = 1008) -> None:
+    """Acepta y cierra el handshake con un código de política (rechazo)."""
+    await websocket.accept()
+    await websocket.close(code=code, reason=reason)
+
+
+async def _authenticate_ws(websocket: WebSocket, token: str | None, session: Session):
+    """
+    Autentica el handshake del WebSocket.
+
+    Devuelve (usuario, roles) si el token es válido y el usuario está activo.
+    Si no, acepta y cierra con código 1008 y devuelve (None, []).
+    """
+    token = _resolve_ws_token(websocket, token)
     payload = decode_access_token(token or "") if token else None
-    if payload is None:
-        await websocket.accept()
-        await websocket.close(code=1008, reason="Token inválido")
-        return
-
-    user_id = payload.get("sub")
+    user_id = payload.get("sub") if payload else None
     if user_id is None:
-        await websocket.accept()
-        await websocket.close(code=1008, reason="Token inválido")
-        return
+        await _reject_ws(websocket, "Token inválido")
+        return None, []
 
     usuario = UsuarioRepository(session).get_by_id(int(user_id))
     if usuario is None or not usuario.activo or usuario.deleted_at is not None:
-        await websocket.accept()
-        await websocket.close(code=1008, reason="Usuario inválido")
-        return
+        await _reject_ws(websocket, "Usuario inválido")
+        return None, []
 
-    await manager.connect(websocket)
+    roles = [normalize_role(ur.rol.codigo) for ur in usuario.usuarios_roles]
+    return usuario, roles
+
+
+def _is_staff(roles: list[str]) -> bool:
+    return ROLE_ADMIN in roles or ROLE_PEDIDOS in roles
+
+
+async def _serve_ws(websocket: WebSocket) -> None:
+    """Loop de recepción: mantiene la conexión viva hasta que el cliente la cierra."""
     try:
         while True:
             await websocket.receive_text()
@@ -307,3 +325,58 @@ async def pedidos_websocket(
         manager.disconnect(websocket)
     except Exception:
         manager.disconnect(websocket)
+
+
+@ws_router.websocket("/ws/pedidos")
+async def pedidos_websocket(
+    websocket: WebSocket,
+    token: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    """Feed de todos los pedidos para usuarios autenticados (canal admin)."""
+    usuario, _roles = await _authenticate_ws(websocket, token, session)
+    if usuario is None:
+        return
+    await manager.connect(websocket, ADMIN_CHANNEL)
+    await _serve_ws(websocket)
+
+
+@ws_router.websocket("/ws/admin/pedidos")
+async def admin_pedidos_websocket(
+    websocket: WebSocket,
+    token: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    """Feed admin de todos los pedidos (consigna §9.2: JWT ADMIN/PEDIDOS)."""
+    usuario, roles = await _authenticate_ws(websocket, token, session)
+    if usuario is None:
+        return
+    if not _is_staff(roles):
+        await _reject_ws(websocket, "Permisos insuficientes")
+        return
+    await manager.connect(websocket, ADMIN_CHANNEL)
+    for rol in roles:
+        manager.add_channel(websocket, role_channel(rol))
+    await _serve_ws(websocket)
+
+
+@ws_router.websocket("/ws/pedidos/{pedido_id}")
+async def pedido_por_id_websocket(
+    websocket: WebSocket,
+    pedido_id: int,
+    token: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    """Feed de un pedido puntual (consigna §9.2). Solo el dueño o el staff."""
+    usuario, roles = await _authenticate_ws(websocket, token, session)
+    if usuario is None:
+        return
+    pedido = PedidoRepository(session).get_by_id_no_deleted(pedido_id)
+    if pedido is None:
+        await _reject_ws(websocket, "Pedido no encontrado")
+        return
+    if not _is_staff(roles) and pedido.usuario_id != usuario.id:
+        await _reject_ws(websocket, "No autorizado")
+        return
+    await manager.connect(websocket, pedido_channel(pedido_id))
+    await _serve_ws(websocket)

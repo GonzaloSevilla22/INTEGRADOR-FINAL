@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { getPedidoDetail, getHistorialPedido, getPagoByPedido, cancelarPedido, verifyPayment } from "../services/api";
 import type { HistorialEstadoPedidoPublic } from "../services/api";
 import { PaymentButton } from "../components/PaymentButton";
+import { RealtimeBadge } from "../components/RealtimeBadge";
+import { useOrderStatusWS } from "../hooks/useOrderStatusWS";
 import { useEffect, useRef, useState } from "react";
 
 const stateLabels: Record<string, string> = {
@@ -41,6 +43,14 @@ export function ClientePedidoDetailPage(): JSX.Element {
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  // Seguimiento en tiempo real del pedido (consigna §9.5): cada evento §9.4
+  // invalida las queries del pedido, su historial y su pago → se refrescan solas.
+  useOrderStatusWS(pedidoId, [
+    ["cliente-pedido", pedidoId],
+    ["cliente-historial", pedidoId],
+    ["cliente-pago", pedidoId],
+  ]);
 
   const [verifying, setVerifying] = useState(false);
   const verifiedRef = useRef(false);
@@ -111,9 +121,12 @@ export function ClientePedidoDetailPage(): JSX.Element {
           <Link to="/mis-pedidos" className="text-sm text-orange-600 hover:underline">&larr; Mis pedidos</Link>
           <h1 className="mt-1 text-3xl font-bold text-orange-900">Pedido #{pedido.id}</h1>
         </div>
-        <span className={`rounded-full px-4 py-2 text-sm font-semibold ${stateColors[pedido.estado_codigo] ?? "bg-slate-100 text-slate-800"}`}>
-          {stateLabels[pedido.estado_codigo] ?? pedido.estado_codigo}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={`rounded-full px-4 py-2 text-sm font-semibold ${stateColors[pedido.estado_codigo] ?? "bg-slate-100 text-slate-800"}`}>
+            {stateLabels[pedido.estado_codigo] ?? pedido.estado_codigo}
+          </span>
+          <RealtimeBadge channel={`pedido:${pedidoId}`} />
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

@@ -445,14 +445,27 @@ export function listPedidos(offset = 0, limit = 50, filter?: PedidosFilter): Pro
   return request<ListResponse<PedidoPublic>>(`/pedidos?${params.toString()}`);
 }
 
-export function getPedidosWebSocketUrl(): string {
+function wsBase(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws/pedidos`;
+  return `${protocol}//${window.location.host}`;
+}
+
+export function getPedidosWebSocketUrl(): string {
+  return `${wsBase()}/ws/pedidos`;
 }
 
 export function getProductosWebSocketUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws/productos`;
+  return `${wsBase()}/ws/productos`;
+}
+
+/** Feed admin de todos los pedidos (consigna §9.2). Requiere JWT ADMIN/PEDIDOS. */
+export function getAdminPedidosWebSocketUrl(token: string): string {
+  return `${wsBase()}/ws/admin/pedidos?token=${encodeURIComponent(token)}`;
+}
+
+/** Feed de un pedido puntual (consigna §9.2). El token va por query param (§9.1). */
+export function getPedidoWebSocketUrl(pedidoId: number, token: string): string {
+  return `${wsBase()}/ws/pedidos/${pedidoId}?token=${encodeURIComponent(token)}`;
 }
 
 export function getIngredienteDetail(ingredienteId: number): Promise<IngredienteDetail> {

@@ -20,6 +20,12 @@ from app.core.rbac import (
 )
 from app.core.stock_utils import aplicar_stock
 from app.core.websocket import manager
+from app.modules.pedidos.events import (
+    EVENT_ESTADO_CAMBIADO,
+    EVENT_PAGO_CONFIRMADO,
+    EVENT_PEDIDO_CANCELADO,
+    build_pedido_event,
+)
 from app.modules.pedidos.models import (
     Pedido,
     DetallePedido,
@@ -71,14 +77,6 @@ class PedidoService:
     ) -> None:
         aplicar_stock(uow._session, producto_id, cantidad, multiplicador)
 
-    EVENTOS_WS = {
-        STATE_PENDIENTE: "PEDIDO_CREADO",
-        STATE_CONFIRMADO: "PEDIDO_CONFIRMADO",
-        STATE_EN_PREP: "PEDIDO_EN_PREP",
-        STATE_ENTREGADO: "PEDIDO_ENTREGADO",
-        STATE_CANCELADO: "PEDIDO_CANCELADO",
-    }
-
     def __init__(self, session: Session) -> None:
         self._session = session
         self._pedido_repo = PedidoRepository(session)
@@ -90,11 +88,26 @@ class PedidoService:
         normalized = {normalize_role(role) for role in roles}
         return ROLE_ADMIN in normalized or ROLE_PEDIDOS in normalized
 
-    async def _broadcast_event(self, estado_codigo: str, pedido_public: PedidoPublic) -> None:
-        event = self.EVENTOS_WS.get(estado_codigo)
-        if event is None:
-            return
-        await manager.broadcast(event, pedido_public.model_dump())
+    async def _broadcast_pedido(
+        self,
+        *,
+        event: str,
+        pedido_id: int,
+        estado_anterior: str | None,
+        estado_nuevo: str,
+        usuario_id: int | None,
+        motivo: str | None = None,
+    ) -> None:
+        """Emite el evento §9.4 al canal del pedido y al canal admin (post-commit)."""
+        evento = build_pedido_event(
+            event=event,
+            pedido_id=pedido_id,
+            estado_anterior=estado_anterior,
+            estado_nuevo=estado_nuevo,
+            usuario_id=usuario_id,
+            motivo=motivo,
+        )
+        await manager.broadcast_pedido(pedido_id, evento)
 
     # ========================================================================
     # CREAR PEDIDO
@@ -242,9 +255,14 @@ class PedidoService:
                 detalles=[self._detalle_to_public(d) for d in detalles],
                 mensaje="Pedido confirmado exitosamente. Stock descontado.",
             )
-            bc_public = self._to_public(pedido)
 
-        await self._broadcast_event(response.estado_codigo, bc_public)
+        await self._broadcast_pedido(
+            event=EVENT_PAGO_CONFIRMADO,
+            pedido_id=pedido_id,
+            estado_anterior=pedido_anterior_codigo,
+            estado_nuevo=response.estado_codigo,
+            usuario_id=usuario_id,
+        )
         return response
 
     # ========================================================================
@@ -332,9 +350,15 @@ class PedidoService:
             uow.historial.add(historial)
 
             result = self._to_detail(pedido)
-            bc_public = self._to_public(pedido)
 
-        await self._broadcast_event(result.estado_codigo, bc_public)
+        await self._broadcast_pedido(
+            event=EVENT_PEDIDO_CANCELADO,
+            pedido_id=pedido_id,
+            estado_anterior=pedido_anterior_codigo,
+            estado_nuevo=result.estado_codigo,
+            usuario_id=usuario_id,
+            motivo=motivo,
+        )
         return result
 
     # ========================================================================
@@ -397,9 +421,15 @@ class PedidoService:
             uow.historial.add(historial)
 
             result = self._to_detail(pedido)
-            bc_public = self._to_public(pedido)
 
-        await self._broadcast_event(result.estado_codigo, bc_public)
+        await self._broadcast_pedido(
+            event=EVENT_ESTADO_CAMBIADO,
+            pedido_id=pedido_id,
+            estado_anterior=pedido_anterior_codigo,
+            estado_nuevo=result.estado_codigo,
+            usuario_id=usuario_id,
+            motivo=data.motivo,
+        )
         return result
 
     # ========================================================================
