@@ -4,8 +4,10 @@ from sqlalchemy import text
 from sqlmodel import Session, create_engine, select
 
 from app.core.config import settings
-from app.models import Categoria, Ingrediente, Producto
-from app.models.producto_ingrediente import UnidadEnum
+from app.modules.categorias.models import Categoria
+from app.modules.ingredientes.models import Ingrediente
+from app.modules.productos.models import Producto
+from app.modules.productos.models import UnidadEnum
 from app.modules.categorias.schemas import CategoriaCreate, CategoriaUpdate
 from app.modules.categorias.service import CategoriaService
 from app.modules.ingredientes.schemas import IngredienteCreate, IngredienteUpdate

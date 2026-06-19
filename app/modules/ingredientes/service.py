@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlmodel import Session
 
 from app.core.websocket import manager
-from app.models import Ingrediente
+from app.modules.ingredientes.models import Ingrediente
 from app.modules.catalogo.unit_of_work import CatalogUnitOfWork
 from app.modules.ingredientes.schemas import (
     IngredienteCreate,
@@ -13,6 +13,7 @@ from app.modules.ingredientes.schemas import (
     IngredienteProductoUso,
     IngredientePublic,
     IngredienteUpdate,
+    UnidadMedidaPublic,
 )
 
 
@@ -27,6 +28,14 @@ class IngredienteService:
 
     def _is_active(self, ingrediente: Ingrediente) -> bool:
         return bool(ingrediente.activo) and ingrediente.deleted_at is None
+
+    def list_unidades_medida(self) -> list[UnidadMedidaPublic]:
+        """Listar las unidades de medida disponibles (datos de referencia)."""
+        with CatalogUnitOfWork(self._session) as uow:
+            return [
+                UnidadMedidaPublic.model_validate(u)
+                for u in uow.ingredientes.list_unidades_medida()
+            ]
 
     async def _broadcast_event(self, event_type: str, data: dict) -> None:
         await manager.broadcast(event_type, data)
@@ -77,7 +86,8 @@ class IngredienteService:
                     producto_id=relation.producto_id,
                     producto_nombre=relation.producto.nombre if relation.producto else f"Producto {relation.producto_id}",
                     cantidad=relation.cantidad,
-                    unidad=relation.unidad,
+                    unidad_medida_id=relation.unidad_medida_id,
+                    unidad_simbolo=relation.unidad_medida.simbolo if relation.unidad_medida else None,
                 )
                 for relation in ingrediente.productos_ingredientes
             ]

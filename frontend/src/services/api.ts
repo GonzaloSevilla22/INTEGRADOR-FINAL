@@ -1,9 +1,9 @@
 import axios, { AxiosError, type AxiosRequestConfig } from "axios";
 import type { Categoria, CategoriaCreate, CategoriaDetail, CategoriaUpdate } from "../models/Categoria";
-import type { Ingrediente, IngredienteCreate, IngredienteDetail, IngredienteUpdate } from "../models/Ingrediente";
+import type { Ingrediente, IngredienteCreate, IngredienteDetail, IngredienteUpdate, UnidadMedida } from "../models/Ingrediente";
 import type { Producto, ProductoCreate, ProductoUpdate } from "../models/Producto";
 
-const API_BASE_URLS = ["/api"];
+const API_BASE_URLS = ["/api/v1"];
 const TOKEN_KEY = "food_store_token";
 
 let _logoutHandler: (() => void) | null = null;
@@ -447,16 +447,20 @@ export function listPedidos(offset = 0, limit = 50, filter?: PedidosFilter): Pro
 
 export function getPedidosWebSocketUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/pedidos/ws/pedidos`;
+  return `${protocol}//${window.location.host}/ws/pedidos`;
 }
 
 export function getProductosWebSocketUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/productos/ws/productos`;
+  return `${protocol}//${window.location.host}/ws/productos`;
 }
 
 export function getIngredienteDetail(ingredienteId: number): Promise<IngredienteDetail> {
   return request<IngredienteDetail>(`/ingredientes/${ingredienteId}/detail`);
+}
+
+export function getUnidadesMedida(): Promise<UnidadMedida[]> {
+  return request<UnidadMedida[]>("/unidades-medida");
 }
 
 export function getCategoriaDetail(categoriaId: number): Promise<CategoriaDetail> {
@@ -555,21 +559,21 @@ export interface ConfirmPaymentResponse {
 }
 
 export function createPreference(pedidoId: number): Promise<CreatePreferenceResponse> {
-  return request<CreatePreferenceResponse>("/api/v1/pagos/create-preference", {
+  return request<CreatePreferenceResponse>("/pagos/create-preference", {
     method: "POST",
     data: { pedido_id: pedidoId },
   });
 }
 
 export function confirmPayment(pedidoId: number, paymentId?: number): Promise<ConfirmPaymentResponse> {
-  return request<ConfirmPaymentResponse>("/api/v1/pagos/confirm", {
+  return request<ConfirmPaymentResponse>("/pagos/confirm", {
     method: "POST",
     data: { pedido_id: pedidoId, payment_id: paymentId },
   });
 }
 
 export function verifyPayment(pedidoId: number): Promise<ConfirmPaymentResponse> {
-  return request<ConfirmPaymentResponse>(`/api/v1/pagos/verify/${pedidoId}`, {
+  return request<ConfirmPaymentResponse>(`/pagos/verify/${pedidoId}`, {
     method: "GET",
   });
 }
@@ -589,7 +593,7 @@ export interface PagoPublic {
 }
 
 export function getPagoByPedido(pedidoId: number): Promise<PagoPublic> {
-  return request<PagoPublic>(`/api/v1/pagos/${pedidoId}`);
+  return request<PagoPublic>(`/pagos/${pedidoId}`);
 }
 
 export interface ManualAprobarPayload {
@@ -598,7 +602,7 @@ export interface ManualAprobarPayload {
 }
 
 export function manualAprobarPago(payload: ManualAprobarPayload): Promise<ConfirmPaymentResponse> {
-  return request<ConfirmPaymentResponse>("/api/v1/pagos/manual-aprobar", {
+  return request<ConfirmPaymentResponse>("/pagos/manual-aprobar", {
     method: "POST",
     data: payload,
   });
@@ -656,23 +660,23 @@ export interface IngresosResponse {
 }
 
 export function getResumen(): Promise<ResumenResponse> {
-  return request<ResumenResponse>("/api/v1/estadisticas/resumen");
+  return request<ResumenResponse>("/estadisticas/resumen");
 }
 
 export function getVentas(): Promise<VentasResponse> {
-  return request<VentasResponse>("/api/v1/estadisticas/ventas");
+  return request<VentasResponse>("/estadisticas/ventas");
 }
 
 export function getProductosTop(limit = 10): Promise<ProductosTopResponse> {
-  return request<ProductosTopResponse>(`/api/v1/estadisticas/productos-top?limit=${limit}`);
+  return request<ProductosTopResponse>(`/estadisticas/productos-top?limit=${limit}`);
 }
 
 export function getPedidosPorEstado(): Promise<PedidosPorEstadoResponse> {
-  return request<PedidosPorEstadoResponse>("/api/v1/estadisticas/pedidos-por-estado");
+  return request<PedidosPorEstadoResponse>("/estadisticas/pedidos-por-estado");
 }
 
 export function getIngresos(): Promise<IngresosResponse> {
-  return request<IngresosResponse>("/api/v1/estadisticas/ingresos");
+  return request<IngresosResponse>("/estadisticas/ingresos");
 }
 
 export type { ListResponse };

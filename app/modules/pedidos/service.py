@@ -10,9 +10,8 @@ from app.core.rbac import (
     ROLE_CLIENT,
     ROLE_PEDIDOS,
     STATE_CANCELADO,
-    STATE_PAGADO,
-    STATE_EN_PREPARACION,
-    STATE_TERMINADO,
+    STATE_CONFIRMADO,
+    STATE_EN_PREP,
     STATE_ENTREGADO,
     STATE_PENDIENTE,
     is_terminal,
@@ -21,7 +20,7 @@ from app.core.rbac import (
 )
 from app.core.stock_utils import aplicar_stock
 from app.core.websocket import manager
-from app.models import (
+from app.modules.pedidos.models import (
     Pedido,
     DetallePedido,
     HistorialEstadoPedido,
@@ -55,17 +54,16 @@ class PedidoService:
     """
 
     TRANSICIONES_VALIDAS = {
-        STATE_PENDIENTE: [STATE_PAGADO, STATE_CANCELADO],
-        STATE_PAGADO: [STATE_EN_PREPARACION, STATE_CANCELADO],
-        STATE_EN_PREPARACION: [STATE_TERMINADO, STATE_CANCELADO],
-        STATE_TERMINADO: [STATE_ENTREGADO],
+        STATE_PENDIENTE: [STATE_CONFIRMADO, STATE_CANCELADO],
+        STATE_CONFIRMADO: [STATE_EN_PREP, STATE_CANCELADO],
+        STATE_EN_PREP: [STATE_ENTREGADO, STATE_CANCELADO],
         STATE_ENTREGADO: [],
         STATE_CANCELADO: [],
     }
 
     TRANSICIONES_STOCK = {
-        (STATE_PAGADO, STATE_CANCELADO): "restore",
-        (STATE_EN_PREPARACION, STATE_CANCELADO): "restore",
+        (STATE_CONFIRMADO, STATE_CANCELADO): "restore",
+        (STATE_EN_PREP, STATE_CANCELADO): "restore",
     }
 
     def _aplicar_stock(
@@ -75,9 +73,8 @@ class PedidoService:
 
     EVENTOS_WS = {
         STATE_PENDIENTE: "PEDIDO_CREADO",
-        STATE_PAGADO: "PEDIDO_PAGADO",
-        STATE_EN_PREPARACION: "PEDIDO_EN_PREPARACION",
-        STATE_TERMINADO: "PEDIDO_TERMINADO",
+        STATE_CONFIRMADO: "PEDIDO_CONFIRMADO",
+        STATE_EN_PREP: "PEDIDO_EN_PREP",
         STATE_ENTREGADO: "PEDIDO_ENTREGADO",
         STATE_CANCELADO: "PEDIDO_CANCELADO",
     }
@@ -214,7 +211,7 @@ class PedidoService:
                     detail=f"Pedido en estado {pedido.estado_codigo}, no puede confirmarse",
                 )
 
-            if STATE_PAGADO not in self.TRANSICIONES_VALIDAS.get(pedido.estado_codigo, []):
+            if STATE_CONFIRMADO not in self.TRANSICIONES_VALIDAS.get(pedido.estado_codigo, []):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Transición de estado no permitida",
@@ -225,13 +222,13 @@ class PedidoService:
                 self._aplicar_stock(uow, detalle.producto_id, detalle.cantidad, multiplicador=1)
 
             pedido_anterior_codigo = pedido.estado_codigo
-            pedido.estado_codigo = STATE_PAGADO
+            pedido.estado_codigo = STATE_CONFIRMADO
             pedido = uow.pedidos.add(pedido)
 
             historial = HistorialEstadoPedido(
                 pedido_id=pedido_id,
                 estado_desde_codigo=pedido_anterior_codigo,
-                estado_hacia_codigo=STATE_PAGADO,
+                estado_hacia_codigo=STATE_CONFIRMADO,
                 usuario_id=usuario_id,
                 motivo="Pedido confirmado",
                 fecha=datetime.now(timezone.utc),
@@ -305,9 +302,9 @@ class PedidoService:
                     detail="Solo puedes cancelar pedidos en estado PENDIENTE",
                 )
 
-            estados_cancelables = [STATE_PENDIENTE, STATE_PAGADO]
+            estados_cancelables = [STATE_PENDIENTE, STATE_CONFIRMADO]
             if self._can_manage_all(roles):
-                estados_cancelables.append(STATE_EN_PREPARACION)
+                estados_cancelables.append(STATE_EN_PREP)
 
             if pedido.estado_codigo not in estados_cancelables:
                 raise HTTPException(
@@ -315,7 +312,7 @@ class PedidoService:
                     detail=f"No se puede cancelar pedido en estado {pedido.estado_codigo}",
                 )
 
-            if pedido.estado_codigo in [STATE_PAGADO, STATE_EN_PREPARACION]:
+            if pedido.estado_codigo in [STATE_CONFIRMADO, STATE_EN_PREP]:
                 detalles = uow.detalles.get_by_pedido_id(pedido_id)
                 for detalle in detalles:
                     self._aplicar_stock(uow, detalle.producto_id, detalle.cantidad, multiplicador=-1)

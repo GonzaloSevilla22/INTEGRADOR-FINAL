@@ -11,7 +11,7 @@ from sqlmodel import Session, select, SQLModel, create_engine
 from app.core.config import settings
 from app.core.rbac import ROLE_STOCK, ROLE_PEDIDOS
 from app.core.security import hash_password
-from app.models import Usuario, UsuarioRol, Rol
+from app.modules.usuarios.models import Usuario, UsuarioRol, Rol
 
 
 def seed_users():

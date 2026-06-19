@@ -251,7 +251,7 @@ export function ProductDetailPage(): JSX.Element {
                           <tr key={ingrediente.ingrediente_id} className="bg-white">
                             <td className="border px-3 py-2">{ingredienteNombre}</td>
                             <td className="border px-3 py-2">{formatQuantity(ingrediente.cantidad)}</td>
-                            <td className="border px-3 py-2">{ingrediente.unidad}</td>
+                            <td className="border px-3 py-2">{ingrediente.unidad_simbolo ?? ""}</td>
                             <td className="border px-3 py-2">{ingrediente.es_opcional ? "Sí" : "No"}</td>
                           </tr>
                         );

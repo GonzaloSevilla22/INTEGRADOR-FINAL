@@ -5,7 +5,8 @@ from sqlmodel import Field, Relationship
 from app.core.base import BaseModel
 
 if TYPE_CHECKING:
-    from app.models.usuario import Usuario
+    from app.modules.usuarios.models import Usuario
+    from app.modules.pedidos.models import Pedido
 
 
 class DireccionEntrega(BaseModel, table=True):

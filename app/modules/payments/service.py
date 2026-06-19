@@ -9,10 +9,10 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from app.core.config import settings
-from app.core.rbac import STATE_PAGADO, normalize_role, ROLE_ADMIN, ROLE_PEDIDOS
+from app.core.rbac import STATE_CONFIRMADO, normalize_role, ROLE_ADMIN, ROLE_PEDIDOS
 from app.core.stock_utils import descontar_stock_pedido
-from app.models.pago import Pago
-from app.models.pedido import Pedido
+from app.modules.payments.models import Pago
+from app.modules.pedidos.models import Pedido
 from app.modules.payments.schemas import (
     PagoCrearResponse,
     PagoEstadoResponse,
@@ -20,6 +20,7 @@ from app.modules.payments.schemas import (
     ManualAprobarRequest,
 )
 from app.modules.payments.unit_of_work import PagoUnitOfWork
+from app.modules.pedidos.pedido_repository import PedidoRepository
 from app.modules.usuarios.schemas import CurrentUser
 
 MP_API_BASE = "https://api.mercadopago.com"
@@ -182,7 +183,7 @@ class PaymentService:
         return None
 
     async def crear_pago(self, pedido_id: int, current_user_id: int) -> PagoCrearResponse:
-        pedido = self._session.get(Pedido, pedido_id)
+        pedido = PedidoRepository(self._session).get_by_id(pedido_id)
         if not pedido:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -234,7 +235,7 @@ class PaymentService:
             uow.pagos.add(pago)
 
             pedido.forma_pago_codigo = "MERCADOPAGO"
-            self._session.add(pedido)
+            uow.pedidos.add(pedido)
 
             return PagoCrearResponse(
                 pago_id=pago.id,
@@ -344,12 +345,12 @@ class PaymentService:
                 uow.pagos.add(pago)
 
                 if nuevo_estado == "aprobado":
-                    pedido = self._session.get(Pedido, pago.pedido_id)
+                    pedido = uow.pedidos.get_by_id(pago.pedido_id)
                     if pedido:
-                        pedido.estado_codigo = STATE_PAGADO
+                        pedido.estado_codigo = STATE_CONFIRMADO
                         pedido.forma_pago_codigo = "MERCADOPAGO"
                         pedido.updated_at = datetime.now(timezone.utc)
-                        self._session.add(pedido)
+                        uow.pedidos.add(pedido)
                         descontar_stock_pedido(self._session, pedido.id)
                         logger.info(
                             "Webhook: pedido %s actualizado a PAGADO, stock descontado",
@@ -374,7 +375,7 @@ class PaymentService:
     async def confirmar_pago(
         self, pedido_id: int, payment_id: Optional[int] = None, current_user: Optional[CurrentUser] = None
     ) -> PagoEstadoResponse:
-        pedido = self._session.get(Pedido, pedido_id)
+        pedido = PedidoRepository(self._session).get_by_id(pedido_id)
         if not pedido:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -426,10 +427,10 @@ class PaymentService:
                     uow.pagos.add(pago)
 
                     if nuevo_estado == "aprobado" and pedido.estado_codigo == "PENDIENTE":
-                        pedido.estado_codigo = STATE_PAGADO
+                        pedido.estado_codigo = STATE_CONFIRMADO
                         pedido.forma_pago_codigo = "MERCADOPAGO"
                         pedido.updated_at = datetime.now(timezone.utc)
-                        self._session.add(pedido)
+                        uow.pedidos.add(pedido)
                         descontar_stock_pedido(self._session, pedido.id)
 
             return PagoEstadoResponse(estado=nuevo_estado, pedido_id=pedido_id)
@@ -442,7 +443,7 @@ class PaymentService:
             )
 
     async def aprobar_manual(self, data: ManualAprobarRequest) -> PagoEstadoResponse:
-        pedido = self._session.get(Pedido, data.pedido_id)
+        pedido = PedidoRepository(self._session).get_by_id(data.pedido_id)
         if not pedido:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -490,9 +491,9 @@ class PaymentService:
                 uow.pagos.add(pago)
 
             if nuevo_estado == "aprobado":
-                pedido.estado_codigo = STATE_PAGADO
+                pedido.estado_codigo = STATE_CONFIRMADO
                 pedido.updated_at = datetime.now(timezone.utc)
-                self._session.add(pedido)
+                uow.pedidos.add(pedido)
                 descontar_stock_pedido(self._session, pedido.id)
 
         return PagoEstadoResponse(estado=nuevo_estado, pedido_id=data.pedido_id)

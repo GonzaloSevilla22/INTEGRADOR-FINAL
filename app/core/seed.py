@@ -8,24 +8,19 @@ from sqlmodel import Session, select
 from app.core.database import engine
 from app.core.rbac import ROLE_ADMIN, ROLE_CLIENT, ROLE_PEDIDOS, ROLE_STOCK
 from app.core.security import hash_password
-from app.models import (
-    Categoria,
+from app.modules.categorias.models import Categoria, ProductoCategoria
+from app.modules.productos.models import Producto, ProductoIngrediente, UnidadEnum
+from app.modules.ingredientes.models import Ingrediente, UnidadMedida
+from app.modules.usuarios.models import Rol, Usuario, UsuarioRol
+from app.modules.direcciones.models import DireccionEntrega
+from app.modules.pedidos.models import (
     DetallePedido,
-    DireccionEntrega,
     EstadoPedido,
     FormaPago,
     HistorialEstadoPedido,
-    Ingrediente,
-    Pago,
     Pedido,
-    Producto,
-    ProductoCategoria,
-    ProductoIngrediente,
-    Rol,
-    Usuario,
-    UsuarioRol,
 )
-from app.models.producto_ingrediente import UnidadEnum
+from app.modules.payments.models import Pago
 
 
 def initialize_roles_and_states() -> None:
@@ -37,11 +32,14 @@ def initialize_roles_and_states() -> None:
         _create_roles(session)
         _create_estados_pedido(session)
         _create_formas_pago(session)
+        _create_unidades_medida(session)
         _migrate_legacy_states(session)
-        _migrate_old_state(session, "PREPARANDO", "EN_PREPARACION")
-        _migrate_old_state(session, "CONFIRMADO", "PAGADO")
-        _migrate_old_state(session, "EN_PREP", "EN_PREPARACION")
-        _migrate_old_state(session, "EN_CAMINO", "EN_PREPARACION")
+        # Migrar bases viejas a los códigos v7 (5 estados de la consigna §3.4)
+        _migrate_old_state(session, "PAGADO", "CONFIRMADO")
+        _migrate_old_state(session, "EN_PREPARACION", "EN_PREP")
+        _migrate_old_state(session, "TERMINADO", "ENTREGADO")
+        _migrate_old_state(session, "PREPARANDO", "EN_PREP")
+        _migrate_old_state(session, "EN_CAMINO", "EN_PREP")
         _ensure_admin_user(session)
         _ensure_cliente_user(session)
         _ensure_stock_user(session)
@@ -89,18 +87,25 @@ def _create_roles(session: Session) -> None:
 
 
 def _create_estados_pedido(session: Session) -> None:
+    # FSM v7 — 5 estados (consigna §3.4). es_terminal según la tabla de estados.
     estados = [
-        ("PENDIENTE", "Pendiente", "Pedido creado, aguardando pago"),
-        ("PAGADO", "Pagado", "Pedido pagado, pendiente de preparación"),
-        ("EN_PREPARACION", "En Preparación", "Pedido en preparación"),
-        ("TERMINADO", "Terminado", "Pedido terminado, listo para entregar"),
-        ("ENTREGADO", "Entregado", "Pedido entregado al cliente"),
-        ("CANCELADO", "Cancelado", "Pedido cancelado"),
+        ("PENDIENTE", "Pendiente", "Pedido creado, pago pendiente", False),
+        ("CONFIRMADO", "Confirmado", "Pago procesado y confirmado", False),
+        ("EN_PREP", "En Preparación", "En preparación en cocina", False),
+        ("ENTREGADO", "Entregado", "Entrega confirmada", True),
+        ("CANCELADO", "Cancelado", "Pedido cancelado", True),
     ]
-    for codigo, nombre, descripcion in estados:
+    for codigo, nombre, descripcion, es_terminal in estados:
         existing = session.exec(select(EstadoPedido).where(EstadoPedido.codigo == codigo)).first()
         if not existing:
-            session.add(EstadoPedido(codigo=codigo, nombre=nombre, descripcion=descripcion))
+            session.add(
+                EstadoPedido(
+                    codigo=codigo,
+                    nombre=nombre,
+                    descripcion=descripcion,
+                    es_terminal=es_terminal,
+                )
+            )
 
 
 def _create_formas_pago(session: Session) -> None:
@@ -115,6 +120,51 @@ def _create_formas_pago(session: Session) -> None:
         ).first()
         if not existing:
             session.add(FormaPago(codigo=codigo, nombre=nombre, descripcion=descripcion))
+
+
+def _create_unidades_medida(session: Session) -> None:
+    # Unidades de medida obligatorias (consigna §14.2).
+    unidades = [
+        ("Kilogramo", "kg", "peso"),
+        ("Gramo", "g", "peso"),
+        ("Litro", "L", "volumen"),
+        ("Mililitro", "ml", "volumen"),
+        ("Unidad", "ud", "contable"),
+        ("Porción", "porciones", "contable"),
+    ]
+    for nombre, simbolo, tipo in unidades:
+        existing = session.exec(
+            select(UnidadMedida).where(UnidadMedida.nombre == nombre)
+        ).first()
+        if not existing:
+            session.add(UnidadMedida(nombre=nombre, simbolo=simbolo, tipo=tipo))
+
+
+def _ensure_consigna_admin_user(session: Session) -> None:
+    # Usuario admin de la consigna §14.2: admin@foodstore.com / Admin1234!
+    _ensure_user(
+        session,
+        "admin@foodstore.com",
+        "Admin",
+        "FoodStore",
+        "0000000000",
+        "Admin1234!",
+        ROLE_ADMIN,
+    )
+
+
+def seed_required_data(session: Session) -> None:
+    """Carga los datos obligatorios de la consigna §14.2 (idempotente).
+
+    Roles, estados de pedido (con es_terminal), formas de pago, unidades de
+    medida y el usuario admin. Usado por `python -m app.db.seed`.
+    """
+    _create_roles(session)
+    _create_estados_pedido(session)
+    _create_formas_pago(session)
+    _create_unidades_medida(session)
+    _ensure_consigna_admin_user(session)
+    session.commit()
 
 
 def _migrate_old_state(session: Session, old_codigo: str, new_codigo: str) -> None:
@@ -343,12 +393,16 @@ def _seed_example_data(session: Session) -> None:
     session.add_all([ingrediente_muzza, ingrediente_aceite])
     session.flush()
 
+    # Unidades de medida por símbolo (las crea _create_unidades_medida).
+    unidad_g = session.exec(select(UnidadMedida).where(UnidadMedida.simbolo == "g")).first()
+    unidad_l = session.exec(select(UnidadMedida).where(UnidadMedida.simbolo == "L")).first()
+
     session.add(
         ProductoIngrediente(
             producto_id=prod_muzza.id,
             ingrediente_id=ingrediente_muzza.id,
-            cantidad=200,
-            unidad=UnidadEnum.GRAMOS,
+            cantidad=Decimal("200.000"),
+            unidad_medida_id=unidad_g.id,
             es_removible=False,
         )
     )
@@ -356,8 +410,8 @@ def _seed_example_data(session: Session) -> None:
         ProductoIngrediente(
             producto_id=prod_napo.id,
             ingrediente_id=ingrediente_muzza.id,
-            cantidad=180,
-            unidad=UnidadEnum.GRAMOS,
+            cantidad=Decimal("180.000"),
+            unidad_medida_id=unidad_g.id,
             es_removible=False,
         )
     )
@@ -365,8 +419,8 @@ def _seed_example_data(session: Session) -> None:
         ProductoIngrediente(
             producto_id=prod_napo.id,
             ingrediente_id=ingrediente_aceite.id,
-            cantidad=0.05,
-            unidad=UnidadEnum.LITROS,
+            cantidad=Decimal("0.050"),
+            unidad_medida_id=unidad_l.id,
             es_removible=True,
         )
     )

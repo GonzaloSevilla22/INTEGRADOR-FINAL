@@ -4,7 +4,7 @@ from typing import Optional
 from sqlmodel import Session, func, select
 
 from app.core.repository import BaseRepository
-from app.models import Pedido
+from app.modules.pedidos.models import Pedido
 
 
 class PedidoRepository(BaseRepository[Pedido]):

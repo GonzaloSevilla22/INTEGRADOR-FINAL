@@ -4,14 +4,17 @@ from typing import List, Optional
 
 from sqlmodel import Field, SQLModel
 
-from app.models.producto_ingrediente import UnidadEnum
-
 
 class ProductoIngredienteSchema(SQLModel):
-    """Schema para ingrediente dentro de un producto."""
+    """Schema para ingrediente dentro de un producto.
+
+    `unidad_medida_id` es FK → UnidadMedida (consigna ERD v7). `unidad_simbolo`
+    es de solo-lectura: se completa en las respuestas para mostrar en el front.
+    """
     ingrediente_id: int
-    cantidad: float = Field(gt=0)
-    unidad: UnidadEnum = Field(default=UnidadEnum.GRAMOS)
+    cantidad: Decimal = Field(gt=0, max_digits=10, decimal_places=3)
+    unidad_medida_id: int
+    unidad_simbolo: Optional[str] = None
     es_removible: bool = True
     es_opcional: bool = False
 

@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "../components/Modal";
 import type { Categoria, CategoriaCreate, CategoriaUpdate } from "../models/Categoria";
-import type { Ingrediente, IngredienteCreate, IngredienteUpdate } from "../models/Ingrediente";
+import type { Ingrediente, IngredienteCreate, IngredienteUpdate, UnidadMedida } from "../models/Ingrediente";
 import type { Producto, ProductoCreate, ProductoIngrediente, ProductoUpdate } from "../models/Producto";
 import {
   categoriaService,
+  getUnidadesMedida,
   ingredienteService,
   productoService,
   type CrudService,
@@ -225,6 +226,18 @@ function ProductoIngredientsEditor({
     queryFn: () => ingredienteService.getAll(0, 100, false),
   });
 
+  const unidadesQuery = useQuery({
+    queryKey: ["unidades-medida"],
+    queryFn: () => getUnidadesMedida(),
+  });
+
+  const unidadesDisponibles = useMemo<UnidadMedida[]>(() => unidadesQuery.data ?? [], [unidadesQuery.data]);
+  const unidadDefaultId = unidadesDisponibles[0]?.id ?? 0;
+  const unidadesPorId = useMemo(
+    () => new Map(unidadesDisponibles.map((u) => [u.id, u])),
+    [unidadesDisponibles]
+  );
+
   const ingredientesDisponibles = ingredientesQuery.data?.data ?? [];
   const ingredientesSeleccionados = (form.ingredientes as ProductoIngrediente[] | undefined) ?? [];
   const ingredientesPorId = useMemo(
@@ -258,7 +271,7 @@ function ProductoIngredientsEditor({
     const nuevaFila: ProductoIngrediente = {
       ingrediente_id: nextIngrediente.id,
       cantidad: 1,
-      unidad: nextIngrediente.unidad_medida,
+      unidad_medida_id: unidadDefaultId,
       es_removible: true,
       es_opcional: false,
     };
@@ -292,8 +305,8 @@ function ProductoIngredientsEditor({
       ) : ingredientesSeleccionados.length > 0 ? (
         <div className="space-y-3 rounded border border-orange-100 bg-white p-2">
           {ingredientesSeleccionados.map((ingrediente, index) => {
-            const ingredienteInfo = ingredientesPorId.get(ingrediente.ingrediente_id);
-            const unidadEsperada = ingredienteInfo?.unidad_medida ?? ingrediente.unidad;
+            const unidadSimbolo =
+              unidadesPorId.get(ingrediente.unidad_medida_id)?.simbolo ?? ingrediente.unidad_simbolo ?? "";
             return (
               <div key={`${ingrediente.ingrediente_id}-${index}`} className="grid gap-2 rounded bg-orange-50 p-3 md:grid-cols-2 lg:grid-cols-[2fr,1fr,1fr,auto,auto,auto]">
                 <div className="min-w-0">
@@ -318,11 +331,7 @@ function ProductoIngredientsEditor({
                         return;
                       }
 
-                      const nextInfo = ingredientesPorId.get(nextId);
-                      updateRow(index, {
-                        ingrediente_id: nextId,
-                        unidad: nextInfo?.unidad_medida ?? ingrediente.unidad,
-                      });
+                      updateRow(index, { ingrediente_id: nextId });
                       setIngredienteSearch((prev) => ({ ...prev, [index]: "" }));
                     }}
                   >
@@ -351,11 +360,14 @@ function ProductoIngredientsEditor({
 
                 <select
                   className="min-w-0 rounded border border-orange-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none"
-                  value={ingrediente.unidad}
-                  onChange={(event) => updateRow(index, { unidad: event.target.value as "gramos" | "litros" })}
+                  value={ingrediente.unidad_medida_id}
+                  onChange={(event) => updateRow(index, { unidad_medida_id: Number(event.target.value) })}
                 >
-                  <option value="gramos">gramos</option>
-                  <option value="litros">litros</option>
+                  {unidadesDisponibles.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.simbolo} — {u.nombre}
+                    </option>
+                  ))}
                 </select>
 
                 <label className="min-w-0 flex items-center gap-2 rounded border border-orange-200 bg-white px-3 py-2 text-sm">
@@ -385,7 +397,7 @@ function ProductoIngredientsEditor({
                 </button>
 
                 <p className="text-xs text-orange-400 md:col-span-2 lg:col-span-6">
-                  Unidad: {unidadEsperada}
+                  Unidad: {unidadSimbolo}
                 </p>
               </div>
             );

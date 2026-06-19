@@ -35,9 +35,17 @@ export interface IngredienteProductoUso {
   producto_id: number;
   producto_nombre: string;
   cantidad: number;
-  unidad: "gramos" | "litros";
+  unidad_medida_id: number;
+  unidad_simbolo?: string | null;
 }
 
 export interface IngredienteDetail extends Ingrediente {
   productos_relacionados: IngredienteProductoUso[];
+}
+
+export interface UnidadMedida {
+  id: number;
+  nombre: string;
+  simbolo: string;
+  tipo: string;
 }

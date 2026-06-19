@@ -1,7 +1,7 @@
 from sqlmodel import Session, func, select
 
 from app.core.repository import BaseRepository
-from app.models import Usuario
+from app.modules.usuarios.models import Usuario
 
 
 class UsuarioRepository(BaseRepository[Usuario]):

@@ -1,9 +1,10 @@
 from decimal import Decimal
 
-from sqlmodel import Session, func, select
+from sqlmodel import Session, delete, func, select
 
 from app.core.repository import BaseRepository
-from app.models import Producto, ProductoCategoria, ProductoIngrediente
+from app.modules.categorias.models import ProductoCategoria
+from app.modules.productos.models import Producto, ProductoIngrediente
 
 
 class ProductoRepository(BaseRepository[Producto]):
@@ -41,9 +42,11 @@ class ProductoRepository(BaseRepository[Producto]):
 
     def set_categoria_principal(self, producto_id: int, categoria_id: int) -> None:
         """Reemplazar la categoría principal del producto."""
-        self.session.query(ProductoCategoria).filter(
-            ProductoCategoria.producto_id == producto_id
-        ).delete()
+        self.session.exec(
+            delete(ProductoCategoria).where(
+                ProductoCategoria.producto_id == producto_id
+            )
+        )
         self.session.add(
             ProductoCategoria(
                 producto_id=producto_id,
@@ -54,9 +57,11 @@ class ProductoRepository(BaseRepository[Producto]):
 
     def clear_categoria_principal(self, producto_id: int) -> None:
         """Eliminar cualquier relación de categoría principal del producto."""
-        self.session.query(ProductoCategoria).filter(
-            ProductoCategoria.producto_id == producto_id
-        ).delete()
+        self.session.exec(
+            delete(ProductoCategoria).where(
+                ProductoCategoria.producto_id == producto_id
+            )
+        )
 
     def set_ingredientes(self, producto_id: int, ingredientes: list[dict]) -> None:
         """
@@ -66,14 +71,16 @@ class ProductoRepository(BaseRepository[Producto]):
             producto_id: ID del producto
             ingredientes: Lista de dicts con:
                 - ingrediente_id: int
-                - cantidad: float
-                - unidad: "gramos" o "litros"
+                - cantidad: Decimal (DECIMAL 10,3)
+                - unidad_medida_id: int (FK → UnidadMedida.id)
                 - es_removible: bool (opcional, default=True)
                 - es_opcional: bool (opcional, default=False)
         """
-        self.session.query(ProductoIngrediente).filter(
-            ProductoIngrediente.producto_id == producto_id
-        ).delete()
+        self.session.exec(
+            delete(ProductoIngrediente).where(
+                ProductoIngrediente.producto_id == producto_id
+            )
+        )
 
         for ing in ingredientes:
             self.session.add(
@@ -81,7 +88,7 @@ class ProductoRepository(BaseRepository[Producto]):
                     producto_id=producto_id,
                     ingrediente_id=ing["ingrediente_id"],
                     cantidad=ing["cantidad"],
-                    unidad=ing.get("unidad", "gramos"),
+                    unidad_medida_id=ing["unidad_medida_id"],
                     es_removible=ing.get("es_removible", True),
                     es_opcional=ing.get("es_opcional", False),
                 )

@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 
 from app.core.repository import BaseRepository
-from app.models import Rol
+from app.modules.usuarios.models import Rol
 
 
 class RolRepository(BaseRepository[Rol]):

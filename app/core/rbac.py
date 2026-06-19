@@ -7,30 +7,32 @@ ROLE_CLIENT = "CLIENT"
 
 ALL_ROLES = [ROLE_ADMIN, ROLE_STOCK, ROLE_PEDIDOS, ROLE_CLIENT]
 
-# Estados de pedido
+# Estados de pedido — FSM v7 (5 estados, ver consigna §3.4)
+# PENDIENTE → CONFIRMADO → EN_PREP → ENTREGADO  (+ CANCELADO)
 STATE_PENDIENTE = "PENDIENTE"
-STATE_PAGADO = "PAGADO"
-STATE_EN_PREPARACION = "EN_PREPARACION"
-STATE_TERMINADO = "TERMINADO"
+STATE_CONFIRMADO = "CONFIRMADO"
+STATE_EN_PREP = "EN_PREP"
 STATE_ENTREGADO = "ENTREGADO"
 STATE_CANCELADO = "CANCELADO"
 
-# Mapeo de estados legacy → nuevos (para migración)
+# Mapeo de estados legacy → nuevos (para migrar bases de datos viejas)
 STATE_LEGACY_MAP = {
-    "CONFIRMADO": STATE_PAGADO,
-    "EN_PREP": STATE_EN_PREPARACION,
+    "PAGADO": STATE_CONFIRMADO,
+    "EN_PREPARACION": STATE_EN_PREP,
+    "TERMINADO": STATE_ENTREGADO,
+    "PREPARANDO": STATE_EN_PREP,
+    "EN_CAMINO": STATE_EN_PREP,
 }
 
 ALL_STATES = [
     STATE_PENDIENTE,
-    STATE_PAGADO,
-    STATE_EN_PREPARACION,
-    STATE_TERMINADO,
+    STATE_CONFIRMADO,
+    STATE_EN_PREP,
     STATE_ENTREGADO,
     STATE_CANCELADO,
 ]
 
-# Estados terminales (no permiten modificaciones posteriores)
+# Estados terminales (no permiten transiciones salientes — RN-01)
 TERMINAL_STATES = {STATE_ENTREGADO, STATE_CANCELADO}
 
 
@@ -40,16 +42,8 @@ def normalize_role(role: str) -> str:
 
 def normalize_state(state: str) -> str:
     raw = (state or "").strip().upper()
-    # Mapear estados legacy
-    if raw == "PREPARANDO":
-        return STATE_EN_PREPARACION
-    if raw == "CONFIRMADO":
-        return STATE_PAGADO
-    if raw == "EN_PREP":
-        return STATE_EN_PREPARACION
-    if raw == "EN_CAMINO":
-        return STATE_EN_PREPARACION
-    return raw
+    # Mapear estados legacy a los códigos v7
+    return STATE_LEGACY_MAP.get(raw, raw)
 
 
 def is_terminal(state: str) -> bool:

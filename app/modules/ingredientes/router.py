@@ -11,14 +11,26 @@ from app.modules.ingredientes.schemas import (
     IngredienteList,
     IngredientePublic,
     IngredienteUpdate,
+    UnidadMedidaPublic,
 )
 from app.modules.ingredientes.service import IngredienteService
 
 router = APIRouter()
 
+# Router de unidades de medida (datos de referencia). Se monta en /api/v1/unidades-medida.
+unidades_router = APIRouter()
+
 
 def get_ingrediente_service(session: Session = Depends(get_session)) -> IngredienteService:
     return IngredienteService(session)
+
+
+@unidades_router.get("", response_model=list[UnidadMedidaPublic])
+def list_unidades_medida(
+    _: CurrentUser = Depends(get_current_active_user),
+    svc: IngredienteService = Depends(get_ingrediente_service),
+) -> list[UnidadMedidaPublic]:
+    return svc.list_unidades_medida()
 
 
 @router.post("", response_model=IngredientePublic, status_code=status.HTTP_201_CREATED)

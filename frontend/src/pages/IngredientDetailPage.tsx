@@ -75,10 +75,10 @@ export function IngredientDetailPage(): JSX.Element {
                   </thead>
                   <tbody>
                     {ingrediente.productos_relacionados.map((uso) => (
-                      <tr key={`${uso.producto_id}-${uso.cantidad}-${uso.unidad}`}>
+                      <tr key={`${uso.producto_id}-${uso.cantidad}-${uso.unidad_medida_id}`}>
                         <td className="border px-3 py-2">{uso.producto_nombre}</td>
                         <td className="border px-3 py-2">{formatNumber(uso.cantidad)}</td>
-                        <td className="border px-3 py-2">{uso.unidad}</td>
+                        <td className="border px-3 py-2">{uso.unidad_simbolo ?? ""}</td>
                       </tr>
                     ))}
                   </tbody>

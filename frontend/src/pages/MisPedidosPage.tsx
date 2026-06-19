@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getPedidosWebSocketUrl, listPedidos, cancelarPedido, type PedidoPublic } from "../services/api";
 
-const ESTADOS = ["PENDIENTE", "PAGADO", "EN_PREPARACION", "TERMINADO", "ENTREGADO", "CANCELADO"] as const;
+const ESTADOS = ["PENDIENTE", "CONFIRMADO", "EN_PREP", "ENTREGADO", "CANCELADO"] as const;
 
 const estadoColor: Record<string, string> = {
   PENDIENTE: "bg-yellow-100 text-yellow-800",
-  PAGADO: "bg-blue-100 text-blue-800",
-  EN_PREPARACION: "bg-purple-100 text-purple-800",
+  CONFIRMADO: "bg-blue-100 text-blue-800",
+  EN_PREP: "bg-purple-100 text-purple-800",
   TERMINADO: "bg-teal-100 text-teal-800",
   ENTREGADO: "bg-green-100 text-green-800",
   CANCELADO: "bg-red-100 text-red-800",

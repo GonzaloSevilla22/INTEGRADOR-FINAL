@@ -14,7 +14,7 @@ from app.core.security import (
     create_access_token, create_refresh_token,
     decode_access_token, decode_refresh_token,
 )
-from app.models import Usuario, UsuarioRol
+from app.modules.usuarios.models import Usuario
 from app.modules.usuarios.repository import UsuarioRepository
 from app.modules.usuarios.unit_of_work import UsuarioUnitOfWork
 from app.modules.usuarios.schemas import (
@@ -67,16 +67,10 @@ class AuthService:
             )
 
             usuario = uow.usuarios.add(usuario)
-            uow._session.flush()
 
             rol_cliente = uow.roles.get_by_codigo(ROLE_CLIENT)
             if rol_cliente:
-                uow._session.add(
-                    UsuarioRol(
-                        usuario_id=usuario.id,
-                        rol_codigo=rol_cliente.codigo,
-                    )
-                )
+                uow.usuarios_roles.add(usuario.id, rol_cliente.codigo)
 
             result = self._to_public(usuario)
 

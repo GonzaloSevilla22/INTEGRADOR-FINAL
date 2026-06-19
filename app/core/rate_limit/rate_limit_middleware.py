@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class RateLimitMiddleware(BaseHTTPMiddleware):
     _instances: list["RateLimitMiddleware"] = []
 
-    AUTH_PATHS: tuple[str, ...] = ("/auth/login", "/auth/register")
+    AUTH_PATHS: tuple[str, ...] = ("/api/v1/auth/login", "/api/v1/auth/register")
     EXCLUDED_PATHS: set[str] = {
         "/", "/favicon.ico", "/openapi.json", "/docs", "/redoc",
     }

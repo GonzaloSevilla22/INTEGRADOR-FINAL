@@ -10,7 +10,8 @@ from sqlmodel import Session
 
 from app.modules.usuarios.repository import UsuarioRepository
 
-from app.models import Usuario, UsuarioRol, DireccionEntrega
+from app.modules.usuarios.models import Usuario
+from app.modules.direcciones.models import DireccionEntrega
 from app.modules.usuarios.unit_of_work import UsuarioUnitOfWork
 from app.modules.usuarios.schemas import (
     UsuarioPublic,
@@ -182,18 +183,9 @@ class UsuarioService:
                     detail="Rol no encontrado",
                 )
 
-            existing = uow._session.query(UsuarioRol).filter(
-                UsuarioRol.usuario_id == usuario_id,
-                UsuarioRol.rol_codigo == rol_codigo,
-            ).first()
-
+            existing = uow.usuarios_roles.get(usuario_id, rol_codigo)
             if not existing:
-                usuario_rol = UsuarioRol(
-                    usuario_id=usuario_id,
-                    rol_codigo=rol_codigo,
-                )
-                uow._session.add(usuario_rol)
-                uow._session.flush()
+                uow.usuarios_roles.add(usuario_id, rol_codigo)
 
             uow._session.refresh(usuario)
 
@@ -221,12 +213,7 @@ class UsuarioService:
                     detail="Usuario no encontrado",
                 )
 
-            uow._session.query(UsuarioRol).filter(
-                UsuarioRol.usuario_id == usuario_id,
-                UsuarioRol.rol_codigo == rol_codigo,
-            ).delete()
-
-            uow._session.flush()
+            uow.usuarios_roles.delete(usuario_id, rol_codigo)
             uow._session.refresh(usuario)
 
         return self._to_detail(usuario)

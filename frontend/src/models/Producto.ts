@@ -1,7 +1,8 @@
 export interface ProductoIngrediente {
   ingrediente_id: number;
   cantidad: number;
-  unidad: "gramos" | "litros";
+  unidad_medida_id: number;
+  unidad_simbolo?: string | null;
   es_removible: boolean;
   es_opcional: boolean;
 }

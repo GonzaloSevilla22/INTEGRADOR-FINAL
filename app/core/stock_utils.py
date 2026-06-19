@@ -11,7 +11,7 @@ def verificar_stock_ingredientes(session: Session, producto_id: int, cantidad: i
     """Verificar si hay suficiente stock de ingredientes para un producto.
     Retorna None si hay stock suficiente, o un mensaje de error si no.
     """
-    from app.models.producto import Producto
+    from app.modules.productos.models import Producto
 
     producto = session.get(Producto, producto_id)
     if not producto:
@@ -108,8 +108,8 @@ def ejecutar_con_verificacion_stock(session: Session, pedido_id: int, accion: st
     Para PostgreSQL usa SELECT ... FOR UPDATE para bloquear filas.
     Para SQLite confía en el bloqueo a nivel de base de datos (serializado).
     """
-    from app.models.producto import Producto
-    from app.models.ingrediente import Ingrediente
+    from app.modules.productos.models import Producto
+    from app.modules.ingredientes.models import Ingrediente
     from app.modules.pedidos.detalle_pedido_repository import DetallePedidoRepository
 
     detalle_repo = DetallePedidoRepository(session)

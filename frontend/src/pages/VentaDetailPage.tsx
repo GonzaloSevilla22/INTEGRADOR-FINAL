@@ -6,8 +6,8 @@ import type { HistorialEstadoPedidoPublic } from "../services/api";
 
 const stateLabels: Record<string, string> = {
   PENDIENTE: "Pendiente",
-  PAGADO: "Pagado",
-  EN_PREPARACION: "Preparando",
+  CONFIRMADO: "Pagado",
+  EN_PREP: "Preparando",
   TERMINADO: "Terminado",
   ENTREGADO: "Entregado",
   CANCELADO: "Cancelado",
@@ -15,8 +15,8 @@ const stateLabels: Record<string, string> = {
 
 const stateColors: Record<string, string> = {
   PENDIENTE: "bg-yellow-100 text-yellow-800",
-  PAGADO: "bg-blue-100 text-blue-800",
-  EN_PREPARACION: "bg-purple-100 text-purple-800",
+  CONFIRMADO: "bg-blue-100 text-blue-800",
+  EN_PREP: "bg-purple-100 text-purple-800",
   TERMINADO: "bg-teal-100 text-teal-800",
   ENTREGADO: "bg-green-100 text-green-800",
   CANCELADO: "bg-red-100 text-red-800",

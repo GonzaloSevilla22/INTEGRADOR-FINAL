@@ -7,7 +7,9 @@ from fastapi import HTTPException
 from sqlmodel import Session
 
 from app.core.websocket import manager
-from app.models import Categoria, Producto
+from app.modules.categorias.models import Categoria
+from app.modules.ingredientes.models import UnidadMedida
+from app.modules.productos.models import Producto
 from app.modules.catalogo.unit_of_work import CatalogUnitOfWork
 from app.modules.productos.schemas import (
     ProductoCreate,
@@ -76,7 +78,7 @@ class ProductoService:
                 cantidad = Decimal(str(relation.cantidad))
                 costo_total += cantidad * Decimal(str(ingrediente.costo_unitario))
                 if relation.cantidad > 0:
-                    candidatos.append(int(floor(float(ingrediente.stock_actual / relation.cantidad))))
+                    candidatos.append(int(floor(float(ingrediente.stock_actual) / float(relation.cantidad))))
             if candidatos:
                 stock_disponible = min(candidatos)
         elif producto.stock_manual is not None:
@@ -94,7 +96,8 @@ class ProductoService:
             ProductoIngredienteSchema(
                 ingrediente_id=item.ingrediente_id,
                 cantidad=item.cantidad,
-                unidad=item.unidad,
+                unidad_medida_id=item.unidad_medida_id,
+                unidad_simbolo=item.unidad_medida.simbolo if item.unidad_medida else None,
                 es_removible=item.es_removible,
                 es_opcional=item.es_opcional,
             )
@@ -141,10 +144,10 @@ class ProductoService:
                     detail=f"Ingrediente con ID {ing.ingrediente_id} no existe o está inactivo",
                 )
 
-            if str(ing.unidad) != str(ingrediente.unidad_medida):
+            if uow._session.get(UnidadMedida, ing.unidad_medida_id) is None:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"La unidad del ingrediente {ing.ingrediente_id} debe ser {ingrediente.unidad_medida.value}",
+                    detail=f"La unidad de medida con ID {ing.unidad_medida_id} no existe",
                 )
 
     def _validate_stock_mode(self, data: ProductoCreate | ProductoUpdate, current: Producto | None = None) -> None:
@@ -393,7 +396,7 @@ class ProductoService:
                         ProductoIngredienteSchema(
                             ingrediente_id=item.ingrediente_id,
                             cantidad=item.cantidad,
-                            unidad=item.unidad,
+                            unidad_medida_id=item.unidad_medida_id,
                             es_removible=item.es_removible,
                             es_opcional=item.es_opcional,
                         )

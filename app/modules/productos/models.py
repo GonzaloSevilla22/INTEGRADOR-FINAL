@@ -1,11 +1,44 @@
 from decimal import Decimal
-from typing import List, Optional
+from enum import Enum
+from typing import TYPE_CHECKING, List, Optional
 
-from sqlmodel import JSON, Column, Field, Relationship
+from sqlalchemy import Column
+from sqlmodel import JSON, Field, Relationship, SQLModel
 
 from app.core.base import BaseModel
-from app.models.producto_categoria import ProductoCategoria
-from app.models.producto_ingrediente import ProductoIngrediente
+from app.modules.categorias.models import ProductoCategoria
+
+if TYPE_CHECKING:
+    from app.modules.ingredientes.models import Ingrediente, UnidadMedida
+
+
+class UnidadEnum(str, Enum):
+    """Unidades de medida para ingredientes."""
+    GRAMOS = "gramos"
+    LITROS = "litros"
+
+
+class ProductoIngrediente(SQLModel, table=True):
+    """
+    Tabla intermedia N:M entre Producto e Ingrediente.
+    Incluye cantidad (DECIMAL 10,3) y la unidad de medida por FK (consigna ERD v7 §5).
+    PK compuesta.
+
+    Ejemplo: Pizza (id=1) + Queso (id=5) = 500.000 g (unidad_medida_id → UnidadMedida).
+    """
+
+    __tablename__ = "productos_ingredientes"
+
+    producto_id: int = Field(foreign_key="productos.id", primary_key=True, nullable=False)
+    ingrediente_id: int = Field(foreign_key="ingredientes.id", primary_key=True, nullable=False)
+    cantidad: Decimal = Field(gt=0, max_digits=10, decimal_places=3, nullable=False)
+    unidad_medida_id: int = Field(foreign_key="unidades_medida.id", nullable=False)
+    es_removible: bool = Field(default=False, nullable=False)
+    es_opcional: bool = Field(default=False, nullable=False)
+
+    producto: "Producto" = Relationship(back_populates="productos_ingredientes")
+    ingrediente: "Ingrediente" = Relationship(back_populates="productos_ingredientes")
+    unidad_medida: "UnidadMedida" = Relationship()
 
 
 class Producto(BaseModel, table=True):

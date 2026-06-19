@@ -21,7 +21,7 @@ from app.modules.payments.service import PaymentService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/pagos", tags=["pagos"])
+router = APIRouter(prefix="/pagos", tags=["pagos"])
 
 
 def get_payment_service(session: Session = Depends(get_session)) -> PaymentService:

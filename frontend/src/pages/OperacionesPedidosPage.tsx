@@ -15,8 +15,8 @@ function asNumber(value: number | string): number {
 
 const estadoColor: Record<string, string> = {
   PENDIENTE: "text-yellow-600",
-  PAGADO: "text-blue-600",
-  EN_PREPARACION: "text-purple-600",
+  CONFIRMADO: "text-blue-600",
+  EN_PREP: "text-purple-600",
   TERMINADO: "text-teal-600",
   ENTREGADO: "text-green-700",
   CANCELADO: "text-red-600",
@@ -24,18 +24,18 @@ const estadoColor: Record<string, string> = {
 
 const estadoBadgeBg: Record<string, string> = {
   PENDIENTE: "bg-yellow-500",
-  PAGADO: "bg-blue-500",
-  EN_PREPARACION: "bg-purple-500",
+  CONFIRMADO: "bg-blue-500",
+  EN_PREP: "bg-purple-500",
   TERMINADO: "bg-teal-500",
   ENTREGADO: "bg-green-600",
   CANCELADO: "bg-red-500",
 };
 
-const FILTER_ESTADOS = ["", "PENDIENTE", "PAGADO", "EN_PREPARACION", "TERMINADO", "ENTREGADO", "CANCELADO"] as const;
+const FILTER_ESTADOS = ["", "PENDIENTE", "CONFIRMADO", "EN_PREP", "ENTREGADO", "CANCELADO"] as const;
 const FORMAS_PAGO = ["", "EFECTIVO", "MERCADOPAGO", "TRANSFERENCIA"] as const;
 
 function puedeCancelar(estado: string): boolean {
-  return ["PENDIENTE", "PAGADO", "EN_PREPARACION"].includes(estado);
+  return ["PENDIENTE", "CONFIRMADO", "EN_PREP"].includes(estado);
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -76,7 +76,7 @@ export function OperacionesPedidosPage(): JSX.Element {
 
   const stats = useMemo(() => {
     const pendientes = allPedidos.filter((p) => p.estado_codigo === "PENDIENTE");
-    const enPreparacion = allPedidos.filter((p) => p.estado_codigo === "EN_PREPARACION");
+    const enPreparacion = allPedidos.filter((p) => p.estado_codigo === "EN_PREP");
     const entregados = allPedidos.filter((p) => p.estado_codigo === "ENTREGADO");
     return {
       total: allPedidos.length,
@@ -157,10 +157,9 @@ export function OperacionesPedidosPage(): JSX.Element {
 
   const siguienteEstado = (estado: string): string | null => {
     const flujo: Record<string, string | null> = {
-      PENDIENTE: "PAGADO",
-      PAGADO: "EN_PREPARACION",
-      EN_PREPARACION: "TERMINADO",
-      TERMINADO: "ENTREGADO",
+      PENDIENTE: "CONFIRMADO",
+      CONFIRMADO: "EN_PREP",
+      EN_PREP: "ENTREGADO",
       ENTREGADO: null,
       CANCELADO: null,
     };

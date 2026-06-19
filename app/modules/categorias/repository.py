@@ -1,7 +1,8 @@
 from sqlmodel import Session, func, select
 
 from app.core.repository import BaseRepository
-from app.models import Categoria, Producto, ProductoCategoria
+from app.modules.categorias.models import Categoria, ProductoCategoria
+from app.modules.productos.models import Producto
 
 
 class CategoriaRepository(BaseRepository[Categoria]):

@@ -17,7 +17,7 @@ export function PaymentButton({ pedidoId, monto, onPaymentInitiated }: PaymentBu
     setError(null)
 
     try {
-      const res = await api.post('/api/v1/pagos/create-preference', {
+      const res = await api.post('/pagos/create-preference', {
         pedido_id: pedidoId,
       })
       const { init_point } = res.data

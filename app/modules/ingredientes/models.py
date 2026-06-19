@@ -5,10 +5,10 @@ from sqlalchemy import Column, Enum as SAEnum
 from sqlmodel import Field, Relationship
 
 from app.core.base import BaseModel
-from app.models.producto_ingrediente import UnidadEnum
+from app.modules.productos.models import UnidadEnum
 
 if TYPE_CHECKING:
-    from app.models.producto_ingrediente import ProductoIngrediente
+    from app.modules.productos.models import ProductoIngrediente
 
 
 class Ingrediente(BaseModel, table=True):
@@ -43,3 +43,12 @@ class Ingrediente(BaseModel, table=True):
     productos_ingredientes: list["ProductoIngrediente"] = Relationship(
         back_populates="ingrediente"
     )
+
+
+class UnidadMedida(BaseModel, table=True):
+    __tablename__ = "unidades_medida"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    nombre: str = Field(max_length=100, nullable=False, unique=True)
+    simbolo: str = Field(max_length=10, nullable=False)
+    tipo: str = Field(max_length=50, nullable=False)

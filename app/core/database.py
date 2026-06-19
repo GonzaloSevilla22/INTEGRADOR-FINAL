@@ -9,7 +9,25 @@ engine = create_engine(settings.DATABASE_URL, echo=False, connect_args=_connect_
 _is_postgres = settings.DATABASE_URL.startswith("postgresql")
 
 
+def _register_all_models() -> None:
+    """Importa los módulos de modelos para poblar SQLModel.metadata.
+
+    Los modelos viven en cada módulo de feature (app/modules/<x>/models.py).
+    Este import explícito garantiza que todas las tablas estén registradas
+    antes de create_all / configuración de mappers, sin depender de cadenas
+    transitivas de import.
+    """
+    from app.modules.categorias import models as _categorias  # noqa: F401
+    from app.modules.productos import models as _productos  # noqa: F401
+    from app.modules.ingredientes import models as _ingredientes  # noqa: F401
+    from app.modules.usuarios import models as _usuarios  # noqa: F401
+    from app.modules.direcciones import models as _direcciones  # noqa: F401
+    from app.modules.pedidos import models as _pedidos  # noqa: F401
+    from app.modules.payments import models as _payments  # noqa: F401
+
+
 def create_db_and_tables() -> None:
+    _register_all_models()
     SQLModel.metadata.create_all(engine)
     _migrate_legacy_schema()
 
@@ -59,10 +77,12 @@ def _migrate_legacy_schema() -> None:
         _update_activo_from_deleted_at(connection, "categorias")
 
         _add_column_if_missing(
-            connection, "productos_ingredientes", "cantidad", "cantidad DOUBLE PRECISION NOT NULL DEFAULT 1"
+            connection, "productos_ingredientes", "cantidad", "cantidad NUMERIC(10,3) NOT NULL DEFAULT 1"
         )
+        # v7: la unidad pasa de enum (columna `unidad`) a FK `unidad_medida_id` → UnidadMedida.
+        # Nullable en la migración para no romper filas existentes; en esquemas nuevos es NN.
         _add_column_if_missing(
-            connection, "productos_ingredientes", "unidad", "unidad VARCHAR(20) NOT NULL DEFAULT 'gramos'"
+            connection, "productos_ingredientes", "unidad_medida_id", "unidad_medida_id BIGINT"
         )
         _add_column_if_missing(
             connection, "productos_ingredientes", "es_removible", "es_removible BOOLEAN NOT NULL DEFAULT false"
@@ -106,22 +126,28 @@ def _migrate_legacy_schema() -> None:
             connection, "pedidos", "forma_pago_codigo", "forma_pago_codigo VARCHAR(50)"
         )
 
-    # Migrar estados legacy en transacción separada con commit explícito
-    # (engine.connect() no hace commit automático, y el seed necesita ver estos cambios)
+        _add_column_if_missing(
+            connection, "estados_pedido", "es_terminal",
+            "es_terminal BOOLEAN NOT NULL DEFAULT FALSE",
+        )
+
+    # Migrar estados legacy a los códigos v7 (FSM 5 estados, consigna §3.4).
+    # Transacción separada con commit explícito (engine.connect() no commitea,
+    # y el seed necesita ver estos cambios).
     with engine.begin() as conn:
-        _migrate_estado_pedido(conn, "CONFIRMADO", "PAGADO")
-        _migrate_estado_pedido(conn, "EN_PREP", "EN_PREPARACION")
-        _migrate_estado_pedido(conn, "PREPARANDO", "EN_PREPARACION")
-        _migrate_estado_pedido(conn, "EN_CAMINO", "EN_PREPARACION")
+        _migrate_estado_pedido(conn, "PAGADO", "CONFIRMADO")
+        _migrate_estado_pedido(conn, "EN_PREPARACION", "EN_PREP")
+        _migrate_estado_pedido(conn, "TERMINADO", "ENTREGADO")
+        _migrate_estado_pedido(conn, "PREPARANDO", "EN_PREP")
+        _migrate_estado_pedido(conn, "EN_CAMINO", "EN_PREP")
 
 
 _ESTADO_INFO = {
-    "PENDIENTE": ("Pendiente", "Pedido creado, aguardando pago"),
-    "PAGADO": ("Pagado", "Pedido pagado, pendiente de preparación"),
-    "EN_PREPARACION": ("En Preparación", "Pedido en preparación"),
-    "TERMINADO": ("Terminado", "Pedido terminado, listo para entregar"),
-    "ENTREGADO": ("Entregado", "Pedido entregado al cliente"),
-    "CANCELADO": ("Cancelado", "Pedido cancelado"),
+    "PENDIENTE": ("Pendiente", "Pedido creado, pago pendiente", False),
+    "CONFIRMADO": ("Confirmado", "Pago procesado y confirmado", False),
+    "EN_PREP": ("En Preparación", "En preparación en cocina", False),
+    "ENTREGADO": ("Entregado", "Entrega confirmada", True),
+    "CANCELADO": ("Cancelado", "Pedido cancelado", True),
 }
 
 
@@ -152,20 +178,20 @@ def _migrate_estado_pedido(connection, old_codigo: str, new_codigo: str) -> None
 
     # Asegurar que el estado nuevo exista en estados_pedido
     if "estados_pedido" in inspector.get_table_names():
-        info = _ESTADO_INFO.get(new_codigo, (new_codigo, ""))
+        info = _ESTADO_INFO.get(new_codigo, (new_codigo, "", False))
         if _is_postgres:
             connection.execute(
                 text(
-                    "INSERT INTO estados_pedido (codigo, nombre, descripcion) "
-                    "VALUES (:codigo, :nombre, :descripcion) ON CONFLICT (codigo) DO NOTHING"
-                ).bindparams(codigo=new_codigo, nombre=info[0], descripcion=info[1])
+                    "INSERT INTO estados_pedido (codigo, nombre, descripcion, es_terminal) "
+                    "VALUES (:codigo, :nombre, :descripcion, :es_terminal) ON CONFLICT (codigo) DO NOTHING"
+                ).bindparams(codigo=new_codigo, nombre=info[0], descripcion=info[1], es_terminal=info[2])
             )
         else:
             connection.execute(
                 text(
-                    "INSERT OR IGNORE INTO estados_pedido (codigo, nombre, descripcion) "
-                    "VALUES (:codigo, :nombre, :descripcion)"
-                ).bindparams(codigo=new_codigo, nombre=info[0], descripcion=info[1])
+                    "INSERT OR IGNORE INTO estados_pedido (codigo, nombre, descripcion, es_terminal) "
+                    "VALUES (:codigo, :nombre, :descripcion, :es_terminal)"
+                ).bindparams(codigo=new_codigo, nombre=info[0], descripcion=info[1], es_terminal=info[2])
             )
 
     # Eliminar estado antiguo si existe en estados_pedido

@@ -23,8 +23,8 @@ function asNumber(value: number | string): number {
 
 const estadoColor: Record<string, string> = {
   PENDIENTE: "text-yellow-600",
-  PAGADO: "text-blue-600",
-  EN_PREPARACION: "text-purple-600",
+  CONFIRMADO: "text-blue-600",
+  EN_PREP: "text-purple-600",
   TERMINADO: "text-teal-600",
   ENTREGADO: "text-green-700",
   CANCELADO: "text-red-600",
@@ -32,15 +32,15 @@ const estadoColor: Record<string, string> = {
 
 const estadoBadgeBg: Record<string, string> = {
   PENDIENTE: "bg-yellow-500",
-  PAGADO: "bg-blue-500",
-  EN_PREPARACION: "bg-purple-500",
+  CONFIRMADO: "bg-blue-500",
+  EN_PREP: "bg-purple-500",
   TERMINADO: "bg-teal-500",
   ENTREGADO: "bg-green-600",
   CANCELADO: "bg-red-500",
 };
 
-const ESTADOS = ["PENDIENTE", "PAGADO", "EN_PREPARACION", "TERMINADO", "ENTREGADO", "CANCELADO"] as const;
-const FILTER_ESTADOS = ["", "PENDIENTE", "PAGADO", "EN_PREPARACION", "TERMINADO", "ENTREGADO", "CANCELADO"] as const;
+const ESTADOS = ["PENDIENTE", "CONFIRMADO", "EN_PREP", "ENTREGADO", "CANCELADO"] as const;
+const FILTER_ESTADOS = ["", "PENDIENTE", "CONFIRMADO", "EN_PREP", "ENTREGADO", "CANCELADO"] as const;
 const FORMAS_PAGO = ["", "EFECTIVO", "MERCADOPAGO", "TRANSFERENCIA"] as const;
 
 function formatDate(iso: string | null | undefined): string {
@@ -98,7 +98,7 @@ export function VentasPage(): JSX.Element {
         porEstado[p.estado_codigo].count += 1;
         porEstado[p.estado_codigo].total += t;
       }
-      const esPagado = p.pago_estado === "aprobado" || ["PAGADO", "EN_PREPARACION", "TERMINADO", "ENTREGADO"].includes(p.estado_codigo);
+      const esPagado = p.pago_estado === "aprobado" || ["CONFIRMADO", "EN_PREP", "ENTREGADO"].includes(p.estado_codigo);
       if (esPagado) {
         pagadosTotal += t;
         pagadosCount += 1;
@@ -183,8 +183,8 @@ export function VentasPage(): JSX.Element {
 
   const ESTADO_CHART_COLORS: Record<string, string> = {
     PENDIENTE: "#EAB308",
-    PAGADO: "#3B82F6",
-    EN_PREPARACION: "#A855F7",
+    CONFIRMADO: "#3B82F6",
+    EN_PREP: "#A855F7",
     TERMINADO: "#14B8A6",
     ENTREGADO: "#16A34A",
     CANCELADO: "#EF4444",
@@ -226,9 +226,9 @@ export function VentasPage(): JSX.Element {
           <div className="rounded-2xl border border-purple-100 bg-purple-50/70 p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-purple-700">En preparación</p>
             <p className="mt-2 text-2xl font-semibold text-purple-950">
-              {stats.porEstado["EN_PREPARACION"].count}
+              {stats.porEstado["EN_PREP"].count}
             </p>
-            <p className="mt-1 text-sm text-purple-600">{stats.porEstado["EN_PREPARACION"].count} pedidos en preparación</p>
+            <p className="mt-1 text-sm text-purple-600">{stats.porEstado["EN_PREP"].count} pedidos en preparación</p>
           </div>
 
           <div className="rounded-2xl border border-red-100 bg-red-50/70 p-4">

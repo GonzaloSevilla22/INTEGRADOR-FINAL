@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 
 from app.core.repository import BaseRepository
-from app.models import HistorialEstadoPedido
+from app.modules.pedidos.models import HistorialEstadoPedido
 
 
 class HistorialEstadoPedidoRepository(BaseRepository[HistorialEstadoPedido]):

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlmodel import Field, SQLModel
 
-from app.models.producto_ingrediente import UnidadEnum
+from app.modules.productos.models import UnidadEnum
 
 
 class IngredienteCreate(SQLModel):
@@ -43,8 +43,9 @@ class IngredientePublic(SQLModel):
 class IngredienteProductoUso(SQLModel):
     producto_id: int
     producto_nombre: str
-    cantidad: float
-    unidad: UnidadEnum
+    cantidad: Decimal
+    unidad_medida_id: int
+    unidad_simbolo: Optional[str] = None
 
 
 class IngredienteDetail(IngredientePublic):
@@ -54,3 +55,10 @@ class IngredienteDetail(IngredientePublic):
 class IngredienteList(SQLModel):
     data: List[IngredientePublic]
     total: int
+
+
+class UnidadMedidaPublic(SQLModel):
+    id: int
+    nombre: str
+    simbolo: str
+    tipo: str

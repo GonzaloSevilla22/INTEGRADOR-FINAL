@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 
 from app.core.repository import BaseRepository
-from app.models import DetallePedido
+from app.modules.pedidos.models import DetallePedido
 
 
 class DetallePedidoRepository(BaseRepository[DetallePedido]):

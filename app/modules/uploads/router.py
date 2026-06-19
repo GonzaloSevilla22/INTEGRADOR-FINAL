@@ -9,7 +9,7 @@ from app.modules.uploads.service import UploadService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/uploads", tags=["uploads"])
+router = APIRouter(prefix="/uploads", tags=["uploads"])
 
 
 def get_upload_service() -> UploadService:
@@ -32,7 +32,7 @@ def subir_imagen(
     return svc.upload_imagen(file)
 
 
-@router.delete("/imagen/{public_id}")
+@router.delete("/imagen/{public_id:path}")
 def eliminar_imagen(
     public_id: str,
     current_user: CurrentUser = Depends(require_roles([ROLE_ADMIN])),

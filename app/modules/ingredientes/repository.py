@@ -1,7 +1,8 @@
 from sqlmodel import Session, func, select
 
 from app.core.repository import BaseRepository
-from app.models import Ingrediente, Producto, ProductoIngrediente
+from app.modules.ingredientes.models import Ingrediente, UnidadMedida
+from app.modules.productos.models import Producto, ProductoIngrediente
 
 
 class IngredienteRepository(BaseRepository[Ingrediente]):
@@ -17,6 +18,10 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
         """Buscar ingrediente por nombre exacto."""
         statement = select(Ingrediente).where(Ingrediente.nombre == nombre)
         return self.session.exec(statement).first()
+
+    def list_unidades_medida(self) -> list[UnidadMedida]:
+        """Todas las unidades de medida (datos de referencia)."""
+        return list(self.session.exec(select(UnidadMedida).order_by(UnidadMedida.id)).all())
 
     def get_active_paginated(
         self, offset: int = 0, limit: int = 20

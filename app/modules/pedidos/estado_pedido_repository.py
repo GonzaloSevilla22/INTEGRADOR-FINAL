@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 
 from app.core.repository import BaseRepository
-from app.models import EstadoPedido
+from app.modules.pedidos.models import EstadoPedido
 
 
 class EstadoPedidoRepository(BaseRepository[EstadoPedido]):

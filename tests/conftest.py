@@ -59,7 +59,8 @@ def _seed_test_data(session: Session) -> None:
     from app.core.rbac import ROLE_ADMIN, ROLE_CLIENT
     from app.core.rbac import STATE_PENDIENTE, STATE_CONFIRMADO, STATE_EN_PREP, STATE_ENTREGADO, STATE_CANCELADO
     from app.core.security import hash_password
-    from app.models import Rol, EstadoPedido, FormaPago, Usuario, UsuarioRol
+    from app.modules.usuarios.models import Rol, Usuario, UsuarioRol
+    from app.modules.pedidos.models import EstadoPedido, FormaPago
     from sqlmodel import select
 
     for codigo, nombre, descripcion in [
@@ -70,16 +71,16 @@ def _seed_test_data(session: Session) -> None:
         if not existing:
             session.add(Rol(codigo=codigo, nombre=nombre, descripcion=descripcion))
 
-    for codigo, nombre, descripcion in [
-        (STATE_PENDIENTE, "Pendiente", ""),
-        (STATE_CONFIRMADO, "Confirmado", ""),
-        (STATE_EN_PREP, "En Preparación", ""),
-        (STATE_ENTREGADO, "Entregado", ""),
-        (STATE_CANCELADO, "Cancelado", ""),
+    for codigo, nombre, es_terminal in [
+        (STATE_PENDIENTE, "Pendiente", False),
+        (STATE_CONFIRMADO, "Confirmado", False),
+        (STATE_EN_PREP, "En Preparación", False),
+        (STATE_ENTREGADO, "Entregado", True),
+        (STATE_CANCELADO, "Cancelado", True),
     ]:
         existing = session.get(EstadoPedido, codigo)
         if not existing:
-            session.add(EstadoPedido(codigo=codigo, nombre=nombre, descripcion=descripcion))
+            session.add(EstadoPedido(codigo=codigo, nombre=nombre, descripcion="", es_terminal=es_terminal))
 
     for codigo, nombre, descripcion in [
         ("EFECTIVO", "Efectivo", ""),
@@ -132,7 +133,7 @@ def client_fixture(app: FastAPI):
 @pytest.fixture(name="admin_auth_headers")
 def admin_auth_headers_fixture(client: TestClient) -> dict:
     response = client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={"email": "admin@test.com", "password": "admin123"},
     )
     assert response.status_code == 200
@@ -143,7 +144,7 @@ def admin_auth_headers_fixture(client: TestClient) -> dict:
 @pytest.fixture(name="cliente_auth_headers")
 def cliente_auth_headers_fixture(client: TestClient) -> dict:
     response = client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={"email": "cliente@test.com", "password": "cliente123"},
     )
     assert response.status_code == 200

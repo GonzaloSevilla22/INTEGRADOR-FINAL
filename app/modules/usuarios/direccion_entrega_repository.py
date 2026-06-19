@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 
 from app.core.repository import BaseRepository
-from app.models import DireccionEntrega
+from app.modules.direcciones.models import DireccionEntrega
 
 
 class DireccionEntregaRepository(BaseRepository[DireccionEntrega]):

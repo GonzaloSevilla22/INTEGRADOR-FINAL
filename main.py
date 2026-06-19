@@ -11,8 +11,11 @@ from app.modules.auth.router import router as auth_router
 from app.modules.usuarios.router import router as usuarios_router
 from app.modules.categorias.router import router as categorias_router
 from app.modules.ingredientes.router import router as ingredientes_router
+from app.modules.ingredientes.router import unidades_router as unidades_medida_router
 from app.modules.productos.router import router as productos_router
+from app.modules.productos.router import ws_router as productos_ws_router
 from app.modules.pedidos.router import router as pedidos_router
+from app.modules.pedidos.router import ws_router as pedidos_ws_router
 from app.modules.payments.router import router as pagos_router
 from app.modules.estadisticas.router import router as estadisticas_router
 from app.modules.uploads.router import router as uploads_router
@@ -56,29 +59,35 @@ app.add_middleware(LoggingMiddleware)
 
 register_exception_handlers(app)
 
+# Todos los endpoints REST cuelgan del prefijo /api/v1 (consigna §6).
 # Routers de autenticación y usuarios
-app.include_router(auth_router, prefix="/auth", tags=["auth"])
-app.include_router(usuarios_router, prefix="/usuarios", tags=["usuarios"])
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(usuarios_router, prefix="/api/v1/usuarios", tags=["usuarios"])
 
 # Routers de catálogo
-app.include_router(categorias_router, prefix="/categorias", tags=["categorias"])
-app.include_router(productos_router, prefix="/productos", tags=["productos"])
-app.include_router(ingredientes_router, prefix="/ingredientes", tags=["ingredientes"])
+app.include_router(categorias_router, prefix="/api/v1/categorias", tags=["categorias"])
+app.include_router(productos_router, prefix="/api/v1/productos", tags=["productos"])
+app.include_router(ingredientes_router, prefix="/api/v1/ingredientes", tags=["ingredientes"])
+app.include_router(unidades_medida_router, prefix="/api/v1/unidades-medida", tags=["unidades-medida"])
 
-# Router de direcciones
-app.include_router(direcciones_router)
+# Router de direcciones (su prefijo interno es /usuarios/{usuario_id}/direcciones)
+app.include_router(direcciones_router, prefix="/api/v1")
 
 # Router de pedidos
-app.include_router(pedidos_router, prefix="/pedidos", tags=["pedidos"])
+app.include_router(pedidos_router, prefix="/api/v1/pedidos", tags=["pedidos"])
 
-# Router de pagos (MercadoPago)
-app.include_router(pagos_router)
+# Router de pagos (MercadoPago) — prefijo interno /pagos
+app.include_router(pagos_router, prefix="/api/v1")
 
 # Router de estadísticas
 app.include_router(estadisticas_router, prefix="/api/v1/estadisticas", tags=["estadisticas"])
 
-# Router de uploads (Cloudinary)
-app.include_router(uploads_router)
+# Router de uploads (Cloudinary) — prefijo interno /uploads
+app.include_router(uploads_router, prefix="/api/v1")
+
+# Endpoints WebSocket: viven en la raíz (/ws/*), fuera de /api/v1 (consigna §9).
+app.include_router(pedidos_ws_router)
+app.include_router(productos_ws_router)
 
 
 @app.get("/", tags=["health"])

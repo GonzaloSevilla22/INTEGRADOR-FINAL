@@ -24,13 +24,13 @@ class TestRateLimitIntegration:
     def test_auth_login_returns_429_when_exceeded(self, client: TestClient):
         for _ in range(5):
             response = client.post(
-                "/auth/login",
+                "/api/v1/auth/login",
                 json={"email": "admin@test.com", "password": "admin123"},
             )
             assert response.status_code == 200
 
         response = client.post(
-            "/auth/login",
+            "/api/v1/auth/login",
             json={"email": "admin@test.com", "password": "admin123"},
         )
         assert response.status_code == 429
@@ -46,13 +46,13 @@ class TestRateLimitIntegration:
     def test_auth_register_returns_429_when_exceeded(self, client: TestClient):
         for _ in range(5):
             response = client.post(
-                "/auth/login",
+                "/api/v1/auth/login",
                 json={"email": "admin@test.com", "password": "admin123"},
             )
             assert response.status_code == 200
 
         response = client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={
                 "nombre": "Test", "apellido": "User", "email": "test@limit.com",
                 "password": "test123456",

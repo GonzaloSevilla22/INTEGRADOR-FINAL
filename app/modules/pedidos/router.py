@@ -8,7 +8,7 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.core.deps import get_current_active_user, require_roles
-from app.core.database import engine, get_session
+from app.core.database import get_session
 from app.core.rbac import ROLE_ADMIN, ROLE_CLIENT, ROLE_PEDIDOS
 from app.core.security import decode_access_token
 from app.core.websocket import manager
@@ -28,6 +28,10 @@ from app.modules.usuarios.repository import UsuarioRepository
 from app.modules.usuarios.schemas import CurrentUser
 
 router = APIRouter()
+
+# Router separado para el WebSocket: vive en la raíz (/ws/pedidos), NO bajo /api/v1
+# (consigna §6: "Los endpoints WebSocket se documentan por separado" — §9.1).
+ws_router = APIRouter()
 
 
 def get_pedido_service(session: Session = Depends(get_session)) -> PedidoService:
@@ -263,9 +267,15 @@ def get_historial_pedido(
     return svc.get_historial(current_user.id, pedido_id, current_user.roles)
 
 
-@router.websocket("/ws/pedidos")
-async def pedidos_websocket(websocket: WebSocket):
-    token = websocket.cookies.get(settings.COOKIE_NAME)
+@ws_router.websocket("/ws/pedidos")
+async def pedidos_websocket(
+    websocket: WebSocket,
+    token: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    # Autenticación: query param ?token=<jwt> (consigna §9.1), o cookie, o header Authorization
+    if not token:
+        token = websocket.cookies.get(settings.COOKIE_NAME)
     if not token:
         auth_header = websocket.headers.get("Authorization")
         if auth_header and auth_header.lower().startswith("bearer "):
@@ -283,12 +293,11 @@ async def pedidos_websocket(websocket: WebSocket):
         await websocket.close(code=1008, reason="Token inválido")
         return
 
-    with Session(engine) as session:
-        usuario = UsuarioRepository(session).get_by_id(int(user_id))
-        if usuario is None or not usuario.activo or usuario.deleted_at is not None:
-            await websocket.accept()
-            await websocket.close(code=1008, reason="Usuario inválido")
-            return
+    usuario = UsuarioRepository(session).get_by_id(int(user_id))
+    if usuario is None or not usuario.activo or usuario.deleted_at is not None:
+        await websocket.accept()
+        await websocket.close(code=1008, reason="Usuario inválido")
+        return
 
     await manager.connect(websocket)
     try:

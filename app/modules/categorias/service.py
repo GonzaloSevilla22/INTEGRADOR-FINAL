@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlmodel import Session
 
-from app.models import Categoria
+from app.modules.categorias.models import Categoria
 from app.modules.catalogo.unit_of_work import CatalogUnitOfWork
 from app.modules.categorias.schemas import (
     CategoriaCreate,

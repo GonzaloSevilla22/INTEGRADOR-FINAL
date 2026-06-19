@@ -20,6 +20,9 @@ from app.modules.productos.service import ProductoService
 
 router = APIRouter()
 
+# Router separado para el WebSocket: vive en la raíz (/ws/productos), NO bajo /api/v1.
+ws_router = APIRouter()
+
 
 def get_producto_service(session: Session = Depends(get_session)) -> ProductoService:
     return ProductoService(session)
@@ -131,7 +134,7 @@ async def update_stock_producto(
     return await svc.update_stock_manual(producto_id, data.stock_cantidad)
 
 
-@router.websocket("/ws/productos")
+@ws_router.websocket("/ws/productos")
 async def productos_websocket(websocket: WebSocket):
     await manager.connect(websocket)
     try:
